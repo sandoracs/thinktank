@@ -1,0 +1,146 @@
+"""Command-line interface (DESIGN.md §17, §18 M1).
+
+``roundtable run template.yaml`` runs a full debate headless — the design's
+"usable for research from the CLI without the UI" milestone (DESIGN.md §18).
+Every posted message is printed live as it happens.
+
+``--fake`` runs the whole pipeline against the offline :class:`FakeLLM`, so the
+system can be exercised end-to-end with no API key or model download.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import logging
+import sys
+from pathlib import Path
+from typing import Any
+
+from roundtable.config import get_settings
+from roundtable.core.manager import SessionManager
+from roundtable.domain.events import Event, EventType, MessagePostedPayload
+from roundtable.domain.models import AgentConfig, SessionConfig
+from roundtable.llm.client import LLMClient
+from roundtable.storage.db import dispose, init_db, make_engine, make_session_factory
+from roundtable.storage.repositories import EventStore
+
+logger = logging.getLogger("roundtable")
+
+_FAKE_TURNS = [
+    "I think we should start from the premise that the question is real, not hypothetical.",
+    "With respect, that assumes the evidence is as strong as it looks.",
+    "Could you give one concrete example where that has actually held up?",
+    "I largely agree, though I'd push back on the strength of the causal claim.",
+    "That's a fair point; let me steelman the other side before responding.",
+    "Here is where I diverge: the incentives, not the intentions, are what matter.",
+    "I'm not convinced that resolves the disclosure question you raised earlier.",
+    "If we accept that, then the practical standard becomes much simpler.",
+    "Let me be specific about the risk I see in your framing.",
+    "That's the strongest version of the argument so far, but it leaves a gap.",
+    "I'd like to concede one point before restating my core position.",
+    "To summarise where we land: we agree on the goal but disagree on the rule.",
+]
+
+
+def _load_session(path: Path) -> tuple[SessionConfig, dict[str, AgentConfig]]:
+    import yaml
+
+    data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    agents: dict[str, AgentConfig] = {}
+    for aid, acfg in (data.get("agents") or {}).items():
+        agents[aid] = AgentConfig(id=aid, **(acfg or {}))
+    session_data = {k: v for k, v in data.items() if k != "agents"}
+    return SessionConfig(**session_data), agents
+
+
+def _build_llm(fake: bool) -> LLMClient:
+    if fake:
+        from roundtable.llm.fake import FakeLLM
+
+        # A generous pool so a multi-round fake run does not repeat immediately.
+        responses = (_FAKE_TURNS * 6)[: 60]
+        return FakeLLM(responses=responses)
+    from roundtable.llm.litellm_client import LiteLLMClient
+
+    return LiteLLMClient()
+
+
+async def _run(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    config, agents = _load_session(args.session)
+
+    engine = make_engine()
+    await init_db(engine)
+    factory = make_session_factory(engine)
+    store = EventStore(factory)
+    manager = SessionManager(
+        store=store,
+        llm=_build_llm(args.fake),
+        default_model=settings.default_model,
+        human_timeout_s=args.human_timeout,
+    )
+    await manager.recover_on_start()
+
+    session = await manager.create_session(config, agents)
+    session_id = session.state.session_id
+    assert session_id is not None
+
+    def _print_event(event: Event) -> None:
+        if event.type is EventType.MESSAGE_POSTED:
+            message = event.payload_as(MessagePostedPayload).message
+            print(f"\n[{event.seq}] {message.speaker_id} ({message.kind}):\n{message.content}\n")
+        elif event.type is EventType.ROUND_STARTED:
+            print(f"\n=== Round {event.payload.get('round')} ===")
+        elif event.type is EventType.SESSION_ENDED:
+            print(f"\n=== Session ended: {event.payload.get('reason')} ===")
+
+    manager.subscribe(session_id, _print_event)
+
+    await manager.start(session)
+
+    state = session.state
+    print("\n" + "=" * 40)
+    print(f"Rounds:   {state.current_round}")
+    print(f"Messages: {state.message_count}")
+    print(f"Cost:     ${state.total_cost_usd:.4f}")
+    print(f"Status:   {state.status}")
+    print("=" * 40)
+
+    await dispose(engine)
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="roundtable", description="Multi-party AI/human debate system.")
+    sub = parser.add_subparsers(dest="command", required=True)
+
+    run_p = sub.add_parser("run", help="Run a debate session from a YAML template.")
+    run_p.add_argument("session", type=Path, help="Path to the session YAML template.")
+    run_p.add_argument("--fake", action="store_true", help="Use the offline FakeLLM (no API calls).")
+    run_p.add_argument(
+        "--human-timeout",
+        type=float,
+        default=60.0,
+        help="Seconds to wait for a human turn before skipping (headless: use a small value).",
+    )
+    run_p.add_argument("-q", "--quiet", action="store_true", help="Suppress live transcript printing.")
+
+    sub.add_parser("serve", help="Start the web hub (available in M2).")
+    sub.add_parser("export", help="Export a session (available in M6).")
+    sub.add_parser("reembed", help="Recompute embeddings after a model change (available in M3).")
+
+    args = parser.parse_args(argv)
+    logging.basicConfig(level=logging.INFO if not args.quiet else logging.WARNING, stream=sys.stderr)
+
+    if args.command == "run":
+        return asyncio.run(_run(args))
+    if args.command == "serve":
+        print("The web hub lands in M2. For M1, use `roundtable run <template.yaml>`.")
+        return 0
+    print(f"`roundtable {args.command}` is available in a later milestone (see DESIGN.md §18).")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Environments / tooling
+.venv/
+.uv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local data / databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+data/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+err.log
+*.log

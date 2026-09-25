@@ -135,19 +135,23 @@ class SessionEngine:
         await self.emit(EventType.SESSION_STARTED)
         self._started_at = time.monotonic()
         await self._moderator_open()
-        await self._start_round(1)
         try:
+            round_no = 1
             while True:
-                _ss = await self._should_stop()
-                if _ss[0]:
+                if (await self._should_stop())[0]:
+                    break
+                max_rounds = self._config.stop.max_rounds
+                if max_rounds is not None and round_no > max_rounds:
+                    # Cap reached: stop before starting the next round so the
+                    # event log never contains a RoundStarted without a RoundEnded.
+                    self.stop("max_rounds")
                     break
                 await self._gate.wait()
+                await self._start_round(round_no)
                 await self._play_round()
                 if self._state.round_complete:
                     await self._end_round()
-                if await self._should_stop():
-                    break
-                await self._start_round(self._state.current_round + 1)
+                round_no += 1
         finally:
             await self._moderator_close()
             await self._finish()
@@ -390,8 +394,6 @@ class SessionEngine:
         if ids and all(pid in self._state.disabled for pid in ids):
             return True, "all_disabled"
         cfg = self._config.stop
-        if cfg.max_rounds is not None and self._state.current_round > cfg.max_rounds:
-            return True, "max_rounds"
         if cfg.max_messages is not None and self._state.message_count >= cfg.max_messages:
             return True, "max_messages"
         if cfg.max_cost_usd is not None and self._state.total_cost_usd >= cfg.max_cost_usd:

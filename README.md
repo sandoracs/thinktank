@@ -57,6 +57,14 @@ uv run roundtable serve --fake          # offline: deterministic FakeLLM, no API
 # open http://127.0.0.1:8080
 ```
 
+Or, with the Ollama defaults baked in (creates `.env` if missing):
+
+```sh
+./start.sh                        # web hub
+./start.sh run session.yaml       # headless session
+./start.sh --fake                 # offline FakeLLM
+```
+
 Real LLM: put provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) in `.env`
 (see `.env.example`) or the environment. The default model is
 `claude-3-5-sonnet-latest` (`ROUNDTABLE_DEFAULT_MODEL`); each agent can override

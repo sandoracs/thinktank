@@ -67,6 +67,9 @@ async def test_full_run_produces_messages_and_events(tmp_path: Path) -> None:
     assert events[-1].type is EventType.SESSION_ENDED
     types = {e.type for e in events}
     assert EventType.ROUND_STARTED in types
+    # Regression: the run loop must honor max_rounds (it used to break
+    # after round 1 because a 2-tuple stop check is always truthy).
+    assert sum(1 for e in events if e.type is EventType.ROUND_STARTED) == 2
     assert EventType.TURN_ASSIGNED in types
     assert EventType.TURN_SKIPPED in types  # the human seat times out
     assert sum(1 for e in events if e.type is EventType.MESSAGE_POSTED) >= 3  # open + agent + close

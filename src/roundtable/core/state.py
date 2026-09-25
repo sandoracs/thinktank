@@ -20,6 +20,7 @@ from roundtable.domain.events import (
     Event,
     EventType,
     MessagePostedPayload,
+    ParticipantDisabledPayload,
     ParticipantRefPayload,
     PersonaUpdatedPayload,
     RoundPayload,
@@ -117,7 +118,7 @@ def apply_event(state: SessionState, event: Event) -> SessionState:
         state.total_input_tokens += int(event.payload.get("input_tokens", 0))
         state.total_output_tokens += int(event.payload.get("output_tokens", 0))
     elif t is EventType.PARTICIPANT_DISABLED:
-        payload = event.payload_as(ParticipantRefPayload)
+        payload = event.payload_as(ParticipantDisabledPayload)
         if payload.participant_id not in state.disabled:
             state.disabled.append(payload.participant_id)
     elif t in (EventType.PERSONA_UPDATED, EventType.PERSONA_UPDATE_CLAMPED):

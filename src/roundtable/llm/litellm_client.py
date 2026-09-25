@@ -148,6 +148,12 @@ class LiteLLMClient:
         import litellm
         import tenacity
 
+        model = str(kwargs.get("model", ""))
+        if model.startswith("ollama/") and "extra_body" not in kwargs:
+            # Ollama thinking models spend the token budget on reasoning that
+            # roundtable never keeps, returning empty content.
+            kwargs["extra_body"] = {"think": False}
+
         @tenacity.retry(
             wait=tenacity.wait_exponential(multiplier=0.5, min=0.5, max=8),
             stop=tenacity.stop_after_attempt(4),

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -34,6 +35,7 @@ from roundtable.domain.events import Event, EventType
 from roundtable.domain.models import (
     AgentConfig,
     DriftMode,
+    Layer,
     PersonaCore,
     SessionConfig,
 )
@@ -52,6 +54,7 @@ from roundtable.storage.db import (
 )
 from roundtable.storage.repositories import EventStore
 from roundtable.web import agents as agent_repo
+from roundtable.web import session_templates as session_tpl
 from roundtable.web.hub import HubSession, WebHub
 from roundtable.web.render import sidebar_fragment, transcript_fragment
 
@@ -184,6 +187,12 @@ def _config_from_form(form: FormData) -> SessionConfig:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _slugify(text: str) -> str:
+    """Derive a safe template id from a free-form title."""
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return slug or "session"
+
+
 def _agent_from_form(form: FormData) -> AgentConfig:
     """Build an AgentConfig from the library form (DESIGN.md §15)."""
 
@@ -207,6 +216,15 @@ def _agent_from_form(form: FormData) -> AgentConfig:
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="consistency_threshold must be an integer") from exc
 
+    def _int(key: str, default: int) -> int:
+        raw_val = str(form.get(key) or "").strip()
+        if not raw_val:
+            return default
+        try:
+            return int(raw_val)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"{key} must be an integer") from exc
+
     persona = PersonaCore(
         name=str(form.get("persona_name") or agent_id).strip() or agent_id,
         role=str(form.get("persona_role") or "").strip(),
@@ -214,6 +232,7 @@ def _agent_from_form(form: FormData) -> AgentConfig:
         values=_csv("values"),
         boundaries=_csv("boundaries"),
     )
+    initial_mood = str(form.get("initial_mood") or "neutral").strip() or "neutral"
     raw: dict[str, Any] = {
         "id": agent_id,
         "model": str(form.get("model") or "").strip() or "claude-3-5-sonnet-latest",
@@ -222,6 +241,13 @@ def _agent_from_form(form: FormData) -> AgentConfig:
         "drift": {"mode": mode},
         "consistency_check": (form.get("consistency_check") or "") == "on",
         "consistency_threshold": threshold,
+        "memory": {
+            "working_window": _int("working_window", 12),
+            "summarize_every": _int("summarize_every", 8),
+            "retrieval_k": _int("retrieval_k", 5),
+            "long_term": (form.get("long_term") or "on") == "on",
+        },
+        "initial_state": {"mood": initial_mood},
     }
     try:
         return AgentConfig.model_validate(raw)
@@ -383,11 +409,15 @@ def create_app(
     async def builder(request: Request) -> HTMLResponse:
         deps = _deps(request)
         templates = await agent_repo.list_templates(deps["factory"])
+        session_templates = [
+            {"id": tid, "title": cfg.title} for tid, cfg in await session_tpl.list_templates(deps["factory"])
+        ]
         return _page(
             "pages/builder.html",
             {
                 "agents": [agent_repo.template_summary(c) for c in templates],
                 "strategies": sorted(load_strategies().keys()),
+                "session_templates": session_templates,
                 "active": "builder",
             },
         )
@@ -397,6 +427,14 @@ def create_app(
         form = await request.form()
         config = _config_from_form(form)
         deps = _deps(request)
+
+        # "Mentés sablonként": store the config as a reusable session template.
+        if (form.get("save_as_template") or "") == "1":
+            template_id = str(form.get("template_id") or "").strip() or _slugify(config.title)
+            if await session_tpl.update_template(deps["factory"], template_id, config) is None:
+                await session_tpl.create_template(deps["factory"], template_id, config)
+            return RedirectResponse("/sessions/new", status_code=303)
+
         entry = await _create_session(deps, config)
         deps["hub"].start(entry.session_id)
         if entry.humans:
@@ -624,6 +662,50 @@ def create_app(
             raise HTTPException(status_code=404, detail="Unknown agent")
         return data
 
+    @app.get("/api/sessions/{session_id}/agents/{agent_id}/memory")
+    async def api_search_memory(
+        session_id: str,
+        agent_id: str,
+        request: Request,
+        q: str = Query(default="", description="free-text query"),
+        k: int = Query(default=5, ge=1, le=50),
+        layer: str = Query(default="all", description="working | episodic | long_term | all"),
+    ) -> dict[str, Any]:
+        """Search an agent's memory (DESIGN.md §15 „memória-kereső")."""
+        sid = _parse_session_id(session_id)
+        if sid is None:
+            raise HTTPException(status_code=404, detail="Unknown session")
+        factory = _deps(request)["factory"]
+        if await agent_repo.get_template(factory, agent_id) is None:
+            raise HTTPException(status_code=404, detail=f"Unknown agent {agent_id!r}")
+        manager: SessionManager = _deps(request)["manager"]
+        backend = manager.memory
+        if backend is None:
+            return {"query": q, "results": []}
+
+        if layer == "all":
+            layers = {Layer.EPISODIC, Layer.LONG_TERM}
+        else:
+            try:
+                layers = {Layer(layer)}
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=f"unknown layer {layer!r}") from exc
+
+        hits = await backend.search(agent_id, q, k, layers, session_id=sid)
+        return {
+            "query": q,
+            "results": [
+                {
+                    "id": h.id,
+                    "layer": h.layer.value,
+                    "content": h.content,
+                    "score": round(h.score, 4),
+                    "source_seq": h.source_seq,
+                }
+                for h in hits
+            ],
+        }
+
     @app.get("/api/agents")
     async def api_agents(request: Request) -> list[dict[str, Any]]:
         templates = await agent_repo.list_templates(_deps(request)["factory"])
@@ -663,6 +745,45 @@ def create_app(
         factory = _deps(request)["factory"]
         if not await agent_repo.delete_template(factory, agent_id):
             raise HTTPException(status_code=404, detail=f"Agent {agent_id!r} not found")
+        return Response(status_code=204)
+
+    @app.get("/api/session-templates")
+    async def api_list_session_templates(request: Request) -> list[dict[str, Any]]:
+        factory = _deps(request)["factory"]
+        templates = await session_tpl.list_templates(factory)
+        return [{"id": tid, "config": cfg.model_dump(mode="json")} for tid, cfg in templates]
+
+    @app.get("/api/session-templates/{template_id}")
+    async def api_get_session_template(request: Request, template_id: str) -> dict[str, Any]:
+        factory = _deps(request)["factory"]
+        config = await session_tpl.get_template(factory, template_id)
+        if config is None:
+            raise HTTPException(status_code=404, detail=f"Session template {template_id!r} not found")
+        return config.model_dump(mode="json")
+
+    @app.post("/api/session-templates", status_code=201)
+    async def api_save_session_template(request: Request) -> dict[str, Any]:
+        factory = _deps(request)["factory"]
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail="body must be JSON") from exc
+        template_id = str(body.get("id") or "").strip()
+        if not template_id:
+            raise HTTPException(status_code=400, detail="id is required")
+        try:
+            config = SessionConfig.model_validate(body.get("config") or {})
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if await session_tpl.update_template(factory, template_id, config) is None:
+            await session_tpl.create_template(factory, template_id, config)
+        return {"id": template_id, "config": config.model_dump(mode="json")}
+
+    @app.delete("/api/session-templates/{template_id}", status_code=204)
+    async def api_delete_session_template(request: Request, template_id: str) -> Response:
+        factory = _deps(request)["factory"]
+        if not await session_tpl.delete_template(factory, template_id):
+            raise HTTPException(status_code=404, detail=f"Session template {template_id!r} not found")
         return Response(status_code=204)
 
     @app.get("/api/plugins")

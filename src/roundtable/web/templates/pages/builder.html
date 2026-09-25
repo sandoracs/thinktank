@@ -64,8 +64,27 @@
     <input type="hidden" name="strategy_params" id="strategy-params-json" value="{}">
   </fieldset>
 
+  <fieldset>
+    <legend>Sablon</legend>
+    <div class="row">
+      <label>Mentett sablon betöltése
+        <select id="session-template-select">
+          <option value="">— (üres) —</option>
+          {% for t in session_templates %}
+          <option value="{{ t.id }}">{{ t.title }} ({{ t.id }})</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn" id="load-template-btn">Betöltés</button>
+      </label>
+      <label>Sablon-azonosító
+        <input name="template_id" placeholder="pl. llm-coauthor-v2" class="narrow">
+      </label>
+    </div>
+  </fieldset>
+
   <p class="actions">
     <button type="submit" class="btn btn-primary">Session létrehozása és indítása</button>
+    <button type="submit" name="save_as_template" value="1" class="btn">Mentés sablonként</button>
     <a class="btn" href="/">Mégse</a>
   </p>
 </form>
@@ -148,6 +167,62 @@
     .catch(() => {
       host.innerHTML = '<span class="hint">(stratégiaparaméterek nem érhetők el)</span>';
     });
+})();
+</script>
+
+<script>
+(function () {
+  const btn = document.getElementById("load-template-btn");
+  const select = document.getElementById("session-template-select");
+  if (!btn || !select) return;
+
+  function setField(name, value) {
+    const el = document.querySelector('[name="' + name + '"]');
+    if (el) el.value = value == null ? "" : String(value);
+  }
+
+  function applyTemplate(cfg) {
+    setField("title", cfg.title);
+    setField("topic", cfg.topic);
+    setField("language", cfg.language);
+    const questions = (cfg.questions || []).map((q) => q.text).join("\n");
+    setField("questions", questions);
+
+    const agents = (cfg.participants || []).filter((p) => p.agent).map((p) => p.agent);
+    const humans = (cfg.participants || []).filter((p) => p.human).map((p) => p.human);
+    const agentSelect = document.querySelector('[name="agents"]');
+    if (agentSelect) {
+      for (const opt of agentSelect.options) opt.selected = agents.includes(opt.value);
+    }
+    setField("humans", humans.join(", "));
+    setField("moderator", cfg.moderator);
+
+    const strategy = (cfg.strategy && cfg.strategy.name) || "round_robin";
+    setField("strategy", strategy);
+    const strategySelect = document.getElementById("strategy-select");
+    if (strategySelect && strategySelect.value !== strategy) {
+      strategySelect.value = strategy;
+      strategySelect.dispatchEvent(new Event("change"));
+    }
+    const paramsJson = document.getElementById("strategy-params-json");
+    if (paramsJson) paramsJson.value = JSON.stringify((cfg.strategy && cfg.strategy.params) || {});
+
+    const stop = cfg.stop || {};
+    setField("max_rounds", stop.max_rounds);
+    setField("max_cost_usd", stop.max_cost_usd);
+  }
+
+  btn.addEventListener("click", () => {
+    const id = select.value;
+    if (!id) return;
+    fetch("/api/session-templates/" + encodeURIComponent(id))
+      .then((r) => {
+        if (!r.ok) throw new Error("template not found");
+        return r.json();
+      })
+      .then(applyTemplate)
+      .catch((e) => alert("Sablon betöltése sikertelen: " + e.message));
+  });
 })();
 </script>
 {% endblock %}

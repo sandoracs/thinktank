@@ -113,6 +113,17 @@ def template_summary(config: AgentConfig) -> dict[str, object]:
             "boundaries": persona.boundaries,
         },
         "drift_mode": config.drift.mode.value,
+        "memory": {
+            "working_window": config.memory.working_window,
+            "summarize_every": config.memory.summarize_every,
+            "retrieval_k": config.memory.retrieval_k,
+            "long_term": config.memory.long_term,
+        },
+        "initial_state": {
+            "mood": config.initial_state.mood,
+            "stances": {k: v.model_dump(mode="json") for k, v in config.initial_state.stances.items()},
+            "attitudes": dict(config.initial_state.attitudes),
+        },
     }
 
 

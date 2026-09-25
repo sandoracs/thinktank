@@ -58,6 +58,37 @@
     </div>
   </fieldset>
 
+  <fieldset>
+    <legend>Memória</legend>
+    <div class="row">
+      <label>Munkamemória ablak (üzenet)
+        <input name="working_window" type="number" min="1" value="12" class="narrow">
+      </label>
+      <label>Összefoglalás gyakorisága
+        <input name="summarize_every" type="number" min="1" value="8" class="narrow">
+      </label>
+      <label>Relevancia k (keresés)
+        <input name="retrieval_k" type="number" min="1" value="5" class="narrow">
+      </label>
+      <label>Hosszú távú memória
+        <select name="long_term">
+          <option value="on" selected>be</option>
+          <option value="off">ki</option>
+        </select>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Kezdő állapot</legend>
+    <div class="row">
+      <label>Kezdő hangulat
+        <input name="initial_mood" placeholder="pl. neutral, bizakodó, óvatos" value="neutral">
+      </label>
+    </div>
+    <p class="hint">A perckérdés-szempontok és az attitűdök sessionenként alakulnak; itt csak a kiinduló hangulat állítható.</p>
+  </fieldset>
+
   <p class="actions">
     <button type="submit" class="btn btn-primary">Agent mentése</button>
     <a class="btn" href="/agents">Mégse</a>

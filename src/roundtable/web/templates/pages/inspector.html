@@ -56,6 +56,21 @@
   </div>
 
   <div class="card">
+    <h2>Memória-kereső</h2>
+    <p class="muted">Keresés az agent episodic és hosszú távú emlékei között.</p>
+    <div class="row">
+      <input id="memory-query" placeholder="pl. együttműködés, LLM, határok..." class="wide">
+      <select id="memory-layer">
+        <option value="all">mind</option>
+        <option value="episodic">episodic</option>
+        <option value="long_term">hosszú távú</option>
+      </select>
+      <button type="button" class="btn btn-primary" id="memory-search-btn">Keresés</button>
+    </div>
+    <div id="memory-results" class="memory-results"></div>
+  </div>
+
+  <div class="card">
     <h2>Drift-idővonal (persona_versions)</h2>
     {% if data.timeline %}
     <table class="grid">
@@ -108,4 +123,51 @@
     {% endif %}
   </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const btn = document.getElementById("memory-search-btn");
+  const query = document.getElementById("memory-query");
+  const layer = document.getElementById("memory-layer");
+  const results = document.getElementById("memory-results");
+  if (!btn || !query || !results) return;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  async function search() {
+    const q = query.value.trim();
+    const params = new URLSearchParams({ q: q, k: "8" });
+    if (layer && layer.value !== "all") params.set("layer", layer.value);
+    results.innerHTML = '<span class="muted">Keresés…</span>';
+    try {
+      const r = await fetch("/api/sessions/{{ data.session_id }}/agents/{{ data.agent_id }}/memory?" + params.toString());
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      if (!data.results || data.results.length === 0) {
+        results.innerHTML = '<span class="muted">Nincs találat.</span>';
+        return;
+      }
+      const items = data.results.map((h) =>
+        '<div class="memory-hit">' +
+        '<span class="chip">' + escapeHtml(h.layer) + '</span> ' +
+        '<span class="hint">score ' + escapeHtml(h.score) + (h.source_seq ? ', seq ' + escapeHtml(h.source_seq) : '') + '</span> ' +
+        '<div>' + escapeHtml(h.content) + '</div>' +
+        '</div>'
+      ).join("");
+      results.innerHTML = items;
+    } catch (e) {
+      results.innerHTML = '<span class="muted">Hiba: ' + escapeHtml(e.message) + '</span>';
+    }
+  }
+
+  btn.addEventListener("click", search);
+  query.addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+})();
+</script>
 {% endblock %}

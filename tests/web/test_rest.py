@@ -60,6 +60,8 @@ def _new_agent_body(agent_id: str = "cautious_statistician") -> dict[str, object
         "drift": {"mode": "bounded"},
         "consistency_check": True,
         "consistency_threshold": 4,
+        "memory": {"working_window": 6, "summarize_every": 4, "retrieval_k": 3, "long_term": False},
+        "initial_state": {"mood": "skeptical"},
     }
 
 
@@ -69,6 +71,13 @@ def test_agent_crud_api(client: TestClient) -> None:
     assert created.status_code == 201
     assert created.json()["id"] == "cautious_statistician"
     assert created.json()["drift_mode"] == "bounded"
+    assert created.json()["memory"] == {
+        "working_window": 6,
+        "summarize_every": 4,
+        "retrieval_k": 3,
+        "long_term": False,
+    }
+    assert created.json()["initial_state"]["mood"] == "skeptical"
 
     # listed
     ids = {a["id"] for a in client.get("/api/agents").json()}
@@ -118,6 +127,11 @@ def test_agent_form_creates_template(client: TestClient) -> None:
         "drift_mode": "free",
         "consistency_check": "on",
         "consistency_threshold": "3",
+        "working_window": "20",
+        "summarize_every": "5",
+        "retrieval_k": "9",
+        "long_term": "off",
+        "initial_mood": "bizakodó",
     }
     response = client.post("/agents", data=form, follow_redirects=False)
     assert response.status_code == 303
@@ -126,6 +140,13 @@ def test_agent_form_creates_template(client: TestClient) -> None:
     assert listing["form_agent"]["drift_mode"] == "free"
     assert listing["form_agent"]["persona"]["name"] == "Form Person"
     assert listing["form_agent"]["persona"]["expertise"] == ["a", "b"]
+    assert listing["form_agent"]["memory"] == {
+        "working_window": 20,
+        "summarize_every": 5,
+        "retrieval_k": 9,
+        "long_term": False,
+    }
+    assert listing["form_agent"]["initial_state"]["mood"] == "bizakodó"
 
 
 def test_agent_form_page_renders(client: TestClient) -> None:
@@ -133,6 +154,11 @@ def test_agent_form_page_renders(client: TestClient) -> None:
     assert page.status_code == 200
     assert "Új agent" in page.text
     assert "drift_mode" in page.text
+    assert "Memória" in page.text
+    assert "working_window" in page.text
+    assert "long_term" in page.text
+    assert "Kezdő állapot" in page.text
+    assert "initial_mood" in page.text
 
 
 def test_plugins_lists_builtin_strategies(client: TestClient) -> None:
@@ -484,3 +510,115 @@ def test_agent_inspector_timeline(tmp_path: Path) -> None:
         # Unknown agent / session 404.
         assert c.get(f"/api/sessions/{sid}/agents/does_not_exist").status_code == 404
         assert c.get("/api/sessions/not-a-uuid/agents/ai_optimist").status_code == 404
+
+
+def test_session_template_save_list_get_delete(client: TestClient) -> None:
+    # Save the builder form as a template.
+    form = {
+        "title": "Template debate",
+        "topic": "Is LLM co-authorship acceptable?",
+        "language": "hu",
+        "questions": "Feltüntethető-e egy LLM?",
+        "agents": ["ai_moderator", "ai_optimist"],
+        "humans": "",
+        "moderator": "ai_moderator",
+        "strategy": "round_robin",
+        "strategy_params": "{}",
+        "max_rounds": "4",
+        "max_cost_usd": "2.5",
+        "template_id": "coauthor-v2",
+        "save_as_template": "1",
+    }
+    saved = client.post("/sessions", data=form, follow_redirects=False)
+    assert saved.status_code == 303
+
+    # Listed via the API.
+    listing = client.get("/api/session-templates").json()
+    ids = {t["id"] for t in listing}
+    assert "coauthor-v2" in ids
+
+    # Fetch one: config round-trips.
+    config = client.get("/api/session-templates/coauthor-v2").json()
+    assert config["title"] == "Template debate"
+    assert config["stop"]["max_rounds"] == 4
+    assert config["moderator"] == "ai_moderator"
+    assert any(p.get("agent") == "ai_moderator" for p in config["participants"])
+
+    # Overwrite (update path) keeps a single row.
+    again = client.post("/sessions", data={**form, "max_rounds": "6"}, follow_redirects=False)
+    assert again.status_code == 303
+    listing = client.get("/api/session-templates").json()
+    assert [t for t in listing if t["id"] == "coauthor-v2"]
+    assert client.get("/api/session-templates/coauthor-v2").json()["stop"]["max_rounds"] == 6
+
+    # Delete -> gone, then 404.
+    assert client.delete("/api/session-templates/coauthor-v2").status_code == 204
+    assert client.delete("/api/session-templates/coauthor-v2").status_code == 404
+    assert client.get("/api/session-templates/coauthor-v2").status_code == 404
+
+
+def test_session_template_save_uses_slugified_title(client: TestClient) -> None:
+    form = {
+        "title": "My Favourite  Debate",
+        "topic": "T",
+        "agents": ["ai_moderator"],
+        "strategy": "round_robin",
+        "strategy_params": "{}",
+        "max_rounds": "1",
+        "max_cost_usd": "1",
+        "save_as_template": "1",
+    }
+    assert client.post("/sessions", data=form, follow_redirects=False).status_code == 303
+    ids = {t["id"] for t in client.get("/api/session-templates").json()}
+    assert "my-favourite-debate" in ids
+
+
+def test_builder_page_lists_templates(client: TestClient) -> None:
+    # Seed a template via the API, then confirm the builder surfaces it.
+    body = {
+        "id": "visible",
+        "config": {
+            "title": "Visible template",
+            "topic": "T",
+            "participants": [{"agent": "ai_moderator"}],
+        },
+    }
+    assert client.post("/api/session-templates", json=body).status_code == 201
+    page = client.get("/sessions/new")
+    assert page.status_code == 200
+    assert "Visible template" in page.text
+    assert "Mentés sablonként" in page.text
+
+
+def test_session_template_api_errors(client: TestClient) -> None:
+    # Missing id -> 400.
+    assert client.post("/api/session-templates", json={"config": {"title": "x"}}).status_code == 400
+    # Invalid config -> 400.
+    bad = client.post("/api/session-templates", json={"id": "x", "config": {}})
+    assert bad.status_code == 400
+    # Unknown get/delete -> 404.
+    assert client.get("/api/session-templates/ghost").status_code == 404
+    assert client.delete("/api/session-templates/ghost").status_code == 404
+
+
+def test_memory_search_endpoint(client: TestClient) -> None:
+    # Run a session to completion so the agents distil episodic memory
+    # (DESIGN.md §11); both writes and the search then happen on the app loop.
+    created = client.post("/api/sessions", json=TWO_AGENT_SESSION)
+    assert created.status_code == 201, created.text
+    sid = created.json()["id"]
+    assert client.post(f"/api/sessions/{sid}/start").status_code == 200
+    assert _wait_status(client, sid, {"ended"}) == "ended"
+
+    # The episodic summary content comes from the scripted FakeLLM ("fake-reply-*").
+    body = client.get(f"/api/sessions/{sid}/agents/ai_optimist/memory", params={"q": "fake", "layer": "episodic"})
+    assert body.status_code == 200, body.text
+    results = body.json()["results"]
+    assert results, "expected at least one episodic memory hit"
+    assert any("fake" in r["content"].lower() for r in results)
+    assert all(r["layer"] == "episodic" for r in results)
+
+    # Unknown agent/session 404, bogus layer 400.
+    assert client.get(f"/api/sessions/{sid}/agents/does_not_exist/memory", params={"q": "fake"}).status_code == 404
+    assert client.get("/api/sessions/not-a-uuid/agents/ai_optimist/memory").status_code == 404
+    assert client.get(f"/api/sessions/{sid}/agents/ai_optimist/memory", params={"layer": "bogus"}).status_code == 400

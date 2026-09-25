@@ -59,6 +59,11 @@ class SessionManager:
         """Seconds a human has to answer before the turn is skipped (DESIGN.md §8.1)."""
         return self._human_timeout_s
 
+    @property
+    def memory(self) -> MemoryBackend | None:
+        """The injected memory backend (``None`` when memory is disabled)."""
+        return self._memory
+
     # -- lifecycle ---------------------------------------------------------
     async def recover_on_start(self) -> int:
         """Mark any leftover ``running`` sessions as ``interrupted``."""

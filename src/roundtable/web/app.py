@@ -391,7 +391,35 @@ def create_app(
 
     @app.get("/agents/new", response_class=HTMLResponse)
     async def agent_form(request: Request) -> HTMLResponse:
-        return _page("pages/agents_new.html", {"active": "agents"})
+        return _page("pages/agent_form.html", {"agent": None, "active": "agents"})
+
+    @app.get("/agents/{agent_id}/edit", response_class=HTMLResponse)
+    async def agent_edit(agent_id: str, request: Request) -> HTMLResponse:
+        factory = _deps(request)["factory"]
+        config = await agent_repo.get_template(factory, agent_id)
+        if config is None:
+            raise HTTPException(status_code=404, detail=f"Agent {agent_id!r} not found")
+        return _page(
+            "pages/agent_form.html",
+            {"agent": agent_repo.template_summary(config), "active": "agents"},
+        )
+
+    @app.post("/agents/{agent_id}")
+    async def agent_update_from_form(agent_id: str, request: Request) -> RedirectResponse:
+        form = await request.form()
+        factory = _deps(request)["factory"]
+        if await agent_repo.get_template(factory, agent_id) is None:
+            raise HTTPException(status_code=404, detail=f"Agent {agent_id!r} not found")
+        try:
+            config = _agent_from_form(form)
+        except HTTPException:
+            raise
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if config.id != agent_id:
+            raise HTTPException(status_code=400, detail="id in path and form must match")
+        await agent_repo.update_template(factory, config)
+        return RedirectResponse("/agents", status_code=303)
 
     @app.post("/agents")
     async def agent_create_from_form(request: Request) -> RedirectResponse:

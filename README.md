@@ -122,9 +122,13 @@ by default because it is an extra model call.
 
 ## Agent library CRUD
 
-Create, update, and delete agent templates:
-- Form: `GET /agents/new` → `POST /agents`
-- API: `POST /api/agents`, `PUT /api/agents/{id}`, `DELETE /api/agents/{id}`
+Create, edit, and delete agent templates:
+- **Library:** `GET /agents` — every agent card is clickable and opens its editor.
+- **Create:** `GET /agents/new` → `POST /agents`
+- **Edit:** `GET /agents/{id}/edit` → `POST /agents/{id}` (path and form id must match).
+  A small ✕ button in the bottom-right corner deletes the agent; the app asks
+  for confirmation first, then `DELETE /api/agents/{id}` and redirects to the library.
+- **API:** `POST /api/agents`, `PUT /api/agents/{id}`, `DELETE /api/agents/{id}`
 
 ## Session templates (save-as / prefill)
 

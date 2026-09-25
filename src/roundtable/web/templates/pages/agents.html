@@ -1,10 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Agent-könyvtár</h1>
+<p class="muted">Kattints egy agentre a szerkesztéshez.</p>
 <p class="actions"><a class="btn btn-primary" href="/agents/new">Új agent</a></p>
 <div class="cards">
   {% for a in agents %}
-  <div class="card">
+  <a class="card card-link" href="/agents/{{ a.id }}/edit" title="{{ a.id }} szerkesztése">
     <div class="card-head">
       <span class="person-name">{{ a.persona.name }}</span>
       <span class="chip chip-ai">{{ a.id }}</span>
@@ -18,7 +19,7 @@
       {% if a.persona.boundaries %}<li><b>Korlátok:</b> {{ a.persona.boundaries|join('; ') }}</li>{% endif %}
       <li><b>Drift mód:</b> <span class="chip">{{ a.drift_mode }}</span></li>
     </ul>
-  </div>
+  </a>
   {% endfor %}
 </div>
 {% endblock %}

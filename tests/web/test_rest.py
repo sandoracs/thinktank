@@ -161,6 +161,80 @@ def test_agent_form_page_renders(client: TestClient) -> None:
     assert "initial_mood" in page.text
 
 
+def test_agent_edit_page_prefilled_with_delete_button(client: TestClient) -> None:
+    client.post("/api/agents", json=_new_agent_body())
+    page = client.get("/agents/cautious_statistician/edit")
+    assert page.status_code == 200
+    text = page.text
+    assert "Agent szerkesztése" in text
+    assert 'name="id" value="cautious_statistician"' in text
+    assert "Dr. Stat" in text
+    assert "cautious statistician" in text
+    # The drift-mode select must be preselected.
+    assert '<option value="bounded" selected>' in text
+    # Consistency fields round-trip from the template.
+    assert 'name="consistency_check"' in text
+    assert '<option value="on" selected>' in text  # _new_agent_body sets consistency on
+    # The bottom-right delete control is only present in edit mode.
+    assert 'id="delete-agent"' in text
+    assert 'data-id="cautious_statistician"' in text
+    # Create form must NOT expose the delete control.
+    fresh = client.get("/agents/new")
+    assert "delete-agent" not in fresh.text
+    # Unknown agent -> 404.
+    assert client.get("/agents/ghost_agent/edit").status_code == 404
+
+
+def test_agent_edit_form_updates(client: TestClient) -> None:
+    client.post("/api/agents", json=_new_agent_body())
+    form = {
+        "id": "cautious_statistician",
+        "model": "ollama/qwen3.8",
+        "temperature": "0.2",
+        "persona_name": "Dr. Módosított",
+        "persona_role": "frissített szerep",
+        "expertise": "a, b",
+        "values": "rigor",
+        "boundaries": "no harm",
+        "drift_mode": "free",
+        "consistency_check": "off",
+        "consistency_threshold": "5",
+        "working_window": "30",
+        "summarize_every": "2",
+        "retrieval_k": "4",
+        "long_term": "on",
+        "initial_mood": "bizakodó",
+    }
+    response = client.post("/agents/cautious_statistician", data=form, follow_redirects=False)
+    assert response.status_code == 303
+    listing = {a["id"]: a for a in client.get("/api/agents").json()}
+    updated = listing["cautious_statistician"]
+    assert updated["model"] == "ollama/qwen3.8"
+    assert updated["persona"]["name"] == "Dr. Módosított"
+    assert updated["persona"]["expertise"] == ["a", "b"]
+    assert updated["drift_mode"] == "free"
+    assert updated["memory"] == {
+        "working_window": 30,
+        "summarize_every": 2,
+        "retrieval_k": 4,
+        "long_term": True,
+    }
+    assert updated["initial_state"]["mood"] == "bizakodó"
+
+    # id in the form must match the path.
+    bad = client.post("/agents/cautious_statistician", data={**form, "id": "someone_else"}, follow_redirects=False)
+    assert bad.status_code == 400
+    # Editing an unknown agent -> 404.
+    assert client.post("/agents/ghost_agent", data=form, follow_redirects=False).status_code == 404
+
+
+def test_agent_library_links_to_edit(client: TestClient) -> None:
+    page = client.get("/agents")
+    assert page.status_code == 200
+    assert '/agents/ai_moderator/edit' in page.text
+    assert "Kattints egy agentre" in page.text
+
+
 def test_plugins_lists_builtin_strategies(client: TestClient) -> None:
     plugins = client.get("/api/plugins").json()
     names = {s["name"] for s in plugins["turn_strategies"]}

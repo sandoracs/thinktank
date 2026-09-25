@@ -113,6 +113,8 @@ def template_summary(config: AgentConfig) -> dict[str, object]:
             "boundaries": persona.boundaries,
         },
         "drift_mode": config.drift.mode.value,
+        "consistency_check": config.consistency_check,
+        "consistency_threshold": config.consistency_threshold,
         "memory": {
             "working_window": config.memory.working_window,
             "summarize_every": config.memory.summarize_every,

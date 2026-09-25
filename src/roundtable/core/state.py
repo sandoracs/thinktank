@@ -120,7 +120,7 @@ def apply_event(state: SessionState, event: Event) -> SessionState:
         payload = event.payload_as(ParticipantRefPayload)
         if payload.participant_id not in state.disabled:
             state.disabled.append(payload.participant_id)
-    elif t is EventType.PERSONA_UPDATED:
+    elif t in (EventType.PERSONA_UPDATED, EventType.PERSONA_UPDATE_CLAMPED):
         payload = event.payload_as(PersonaUpdatedPayload)
         state.persona_states[payload.agent_id] = payload.state
 

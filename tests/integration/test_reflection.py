@@ -181,3 +181,82 @@ async def test_locked_without_shadow_never_reflects(harness: Harness) -> None:
     assert _by_type(events, EventType.PERSONA_UPDATE_REJECTED) == []
     assert _by_type(events, EventType.PERSONA_UPDATED) == []
     assert await store.persona_history(AGENT_ID, sid) == []
+
+
+BOUNDED_PROPOSAL = {
+    "stance_updates": [
+        {
+            "question_id": "q1",
+            "new_position": "disclose-always",
+            "new_confidence": 0.9,
+            "influenced_by": ["optimist"],
+            "reason": "first",
+        },
+        {
+            "question_id": "q2",
+            "new_position": "yes-with-care",
+            "new_confidence": 0.8,
+            "influenced_by": ["optimist"],
+            "reason": "second — should be skipped by the per-round limit",
+        },
+    ],
+    "attitude_updates": [],
+    "mood": "persuaded",
+}
+
+
+@pytest.mark.asyncio
+async def test_bounded_mode_clamps_and_limits(tmp_path: Path) -> None:
+    """M6: BOUNDED mode applies within the per-round limit and records a Clamped event."""
+
+    def responder(model: str, messages: list[ChatMessage], purpose: str, response_model: object) -> str:
+        if purpose == "speech":
+            return "a considered position"
+        if purpose == "reflection":
+            return json.dumps(BOUNDED_PROPOSAL)
+        return "ok"
+
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'bounded.db'}")
+    await init_db(engine)
+    store = EventStore(make_session_factory(engine))
+    manager = SessionManager(store=store, llm=FakeLLM(responder=responder))
+    agent = {
+        AGENT_ID: AgentConfig(
+            id=AGENT_ID,
+            model="fake-model",
+            persona=PersonaCore(name="Skeptic", role="critical analyst"),
+            # Only one stance change per round; the second proposed change is skipped.
+            drift=DriftConfig(mode=DriftMode.BOUNDED, max_stance_changes_per_round=1),
+        )
+    }
+    config = SessionConfig(
+        title="bounded",
+        topic="Should AI co-author papers?",
+        questions=[
+            DebateQuestion(id="q1", text="Should AI co-author papers?"),
+            DebateQuestion(id="q2", text="Must AI usage be disclosed?"),
+        ],
+        participants=[ParticipantRef(agent=AGENT_ID)],
+        stop=StopConditions(max_rounds=1, max_cost_usd=10.0),
+    )
+    try:
+        session = await manager.create_session(config, agent)
+        await manager.start(session)
+        sid = session.state.session_id
+        assert sid is not None
+
+        events = await store.get_events(sid)
+        assert _by_type(events, EventType.REFLECTION_PROPOSED)
+        # A clamp (limit applied) is recorded, not a plain update.
+        clamped = _by_type(events, EventType.PERSONA_UPDATE_CLAMPED)
+        assert clamped, "expected a PersonaUpdateClamped event"
+        state = project(sid, events)
+        # Only the first stance change (within the limit) landed.
+        assert AGENT_ID in state.persona_states
+        assert Q1 in state.persona_states[AGENT_ID].stances
+        assert "q2" not in state.persona_states[AGENT_ID].stances
+        # The clamp note explains what was skipped.
+        notes = clamped[0].payload.get("notes") or []
+        assert any("q2" in n for n in notes)
+    finally:
+        await engine.dispose()

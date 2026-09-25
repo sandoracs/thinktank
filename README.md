@@ -7,7 +7,7 @@ machine, SQLite. Full specification in [`DESIGN.md`](DESIGN.md) (Hungarian).
 
 ## Status
 
-Milestones **M0–M6** are implemented and tested (53 tests, ruff + pyright
+Milestones **M0–M6** are implemented and tested (54 tests, ruff + pyright
 strict clean). M7 (remote agents, token streaming, tool-using agents) is
 optional and not started.
 
@@ -32,7 +32,7 @@ uv sync            # installs Python 3.12 + all deps into .venv
 ## Verify
 
 ```sh
-uv run pytest -q                 # 53 tests
+uv run pytest -q                 # 54 tests
 uv run ruff check src tests      # lint
 uv run --with pyright pyright    # strict type-check (0 errors)
 ```

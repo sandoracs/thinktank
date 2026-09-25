@@ -112,6 +112,29 @@ Create, update, and delete agent templates:
 - Form: `GET /agents/new` → `POST /agents`
 - API: `POST /api/agents`, `PUT /api/agents/{id}`, `DELETE /api/agents/{id}`
 
+## Session templates (save-as / prefill)
+
+Save a builder form as a reusable session configuration, then prefill the
+builder from any saved template (DESIGN §7 `session_templates`, §15
+„mentés sablonként"):
+- Builder: `POST /sessions` with `save_as_template=1` (optionally `template_id`);
+  the builder lists saved templates and loads one with the „Betöltés" button.
+- API: `GET /api/session-templates`, `GET/POST /api/session-templates[/{id}]`,
+  `DELETE /api/session-templates/{id}`.
+
+## Agent memory search (inspector)
+
+Search an agent's episodic + long-term memory from the agent inspector
+(DESIGN §15 „memória-kereső"):
+- `GET /api/sessions/{id}/agents/{agent}/memory?q=&k=&layer=` (layer:
+  `all` | `episodic` | `long_term`) over the hybrid `MemoryBackend`.
+
+## Agent form: memory + initial state
+
+The agent form (`/agents/new`) exposes the memory settings
+(`working_window`, `summarize_every`, `retrieval_k`, `long_term`) and the
+initial persona state (mood); both round-trip through the agent summary.
+
 ## Configuration
 
 Env vars are prefixed `ROUNDTABLE_` (see `config.py`). Key ones:

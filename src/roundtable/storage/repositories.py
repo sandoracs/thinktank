@@ -9,7 +9,11 @@ read-max-then-insert here never races within a session.
 
 from __future__ import annotations
 
+import csv
+import io
+import json
 import uuid
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -24,6 +28,7 @@ from roundtable.domain.events import Event, EventType, MessagePostedPayload
 from roundtable.domain.models import Message, SessionConfig
 from roundtable.storage.tables import Event as EventRow
 from roundtable.storage.tables import Message as MessageRow
+from roundtable.storage.tables import PersonaVersion as PersonaVersionRow
 from roundtable.storage.tables import Session as SessionRow
 
 _LIFECYCLE = {
@@ -110,6 +115,18 @@ class EventStore:
                     )
                 )
 
+            if event.type is EventType.APPROVAL_REQUESTED:
+                from roundtable.storage.tables import PendingApproval as PendingApprovalRow
+
+                db.add(
+                    PendingApprovalRow(
+                        session_id=session_key,
+                        agent_id=event.payload.get("agent_id", ""),
+                        proposal=event.payload.get("proposal", {}),
+                        status="pending",
+                    )
+                )
+
             if event.type in _LIFECYCLE:
                 await db.execute(
                     sa.update(SessionRow).where(SessionRow.id == session_key).values(status=_LIFECYCLE[event.type])
@@ -144,6 +161,177 @@ class EventStore:
                 sa.select(sa.func.max(EventRow.seq)).where(EventRow.session_id == str(session_id))
             )
             return row.scalar() or 0
+
+    # -- persona versions --------------------------------------------------
+    async def next_persona_version(self, agent_id: str, session_id: uuid.UUID) -> int:
+        async with self._factory() as db:
+            row = await db.execute(
+                sa.select(sa.func.coalesce(sa.func.max(PersonaVersionRow.version), 0)).where(
+                    PersonaVersionRow.agent_id == agent_id,
+                    PersonaVersionRow.session_id == str(session_id),
+                )
+            )
+            return int(row.scalar() or 0) + 1
+
+    async def append_persona_version(
+        self,
+        agent_id: str,
+        session_id: uuid.UUID,
+        version: int,
+        state: dict[str, object],
+        cause_seq: int | None,
+    ) -> None:
+        async with self._factory() as db, db.begin():
+            db.add(
+                PersonaVersionRow(
+                    agent_id=agent_id,
+                    session_id=str(session_id),
+                    version=version,
+                    state=state,
+                    cause_seq=cause_seq,
+                )
+            )
+
+    async def persona_history(
+        self, agent_id: str, session_id: uuid.UUID
+    ) -> list[PersonaVersionRow]:
+        async with self._factory() as db:
+            rows = (
+                await db.execute(
+                    sa.select(PersonaVersionRow)
+                    .where(
+                        PersonaVersionRow.agent_id == agent_id,
+                        PersonaVersionRow.session_id == str(session_id),
+                    )
+                    .order_by(PersonaVersionRow.version)
+                )
+            ).scalars().all()
+        return list(rows)
+
+    # -- approvals (DESIGN.md §12.3, §14.1, M6) ---------------------------
+    async def list_approvals(
+        self, session_id: uuid.UUID, agent_id: str | None = None
+    ) -> list[dict[str, object]]:
+        """Return the session's approval requests (pending first), newest last."""
+        from roundtable.storage.tables import PendingApproval as PendingApprovalRow
+
+        async with self._factory() as db:
+            stmt = (
+                sa.select(PendingApprovalRow)
+                .where(PendingApprovalRow.session_id == str(session_id))
+                .order_by(PendingApprovalRow.created_at, PendingApprovalRow.id)
+            )
+            if agent_id is not None:
+                stmt = stmt.where(PendingApprovalRow.agent_id == agent_id)
+            rows = (await db.execute(stmt)).scalars().all()
+        return [
+            {
+                "id": r.id,
+                "agent_id": r.agent_id,
+                "proposal": r.proposal,
+                "status": r.status,
+                "created_at": r.created_at,
+                "decided_at": r.decided_at,
+            }
+            for r in rows
+        ]
+
+    async def decide_approval_row(
+        self, session_id: uuid.UUID, agent_id: str, status: str
+    ) -> bool:
+        """Mark the pending approval for ``agent_id`` as ``approved``/``rejected``."""
+        from roundtable.storage.tables import PendingApproval as PendingApprovalRow
+
+        async with self._factory() as db, db.begin():
+            result = await db.execute(
+                sa.update(PendingApprovalRow)
+                .where(
+                    PendingApprovalRow.session_id == str(session_id),
+                    PendingApprovalRow.agent_id == agent_id,
+                    PendingApprovalRow.status == "pending",
+                )
+                .values(status=status, decided_at=datetime.now(UTC))
+            )
+            return (result.rowcount or 0) > 0  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
+
+    # -- export (DESIGN.md §14.1, M6) -------------------------------------
+    async def export(self, session_id: uuid.UUID, format: str = "jsonl") -> str:
+        """Render the full event stream as ``jsonl`` or ``csv`` text."""
+        events = await self.get_events(session_id)
+        return render_export(events, str(session_id), format)
+
+
+def render_export(events: list[Event], session_id: str, format: str) -> str:
+    """Render events as analysis-ready ``jsonl`` or ``csv`` (DESIGN.md §14.1).
+
+    JSONL: one JSON object per event, with message payloads inlined so the
+    transcript is directly usable. CSV: a flat transcript of the spoken turns.
+    """
+    if format not in ("jsonl", "csv"):
+        raise ValueError(f"unsupported export format: {format!r}")
+    ordered = sorted(events, key=lambda e: e.seq)
+    if format == "jsonl":
+        lines = [
+            json.dumps(_event_record(e, session_id), ensure_ascii=False, default=str)
+            for e in ordered
+        ]
+        return "\n".join(lines) + ("\n" if lines else "")
+
+    # CSV transcript
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["seq", "created_at", "type", "speaker", "content"])
+    for e in ordered:
+        if e.type is EventType.MESSAGE_POSTED:
+            message = e.payload.get("message") or {}
+            writer.writerow(
+                [e.seq, e.created_at, e.type, message.get("speaker_id", ""), message.get("content", "")]
+            )
+        else:
+            writer.writerow([e.seq, e.created_at, e.type, "", ""])
+    return buf.getvalue()
+
+
+def _event_record(e: Event, session_id: str) -> dict[str, object]:
+    """Flatten an event into an analysis-ready record."""
+    record: dict[str, object] = {
+        "session_id": session_id,
+        "seq": e.seq,
+        "type": e.type,
+        "created_at": e.created_at,
+    }
+    if e.type is EventType.MESSAGE_POSTED:
+        message = e.payload.get("message") or {}
+        record["speaker"] = message.get("speaker_id")
+        record["kind"] = message.get("kind")
+        record["content"] = message.get("content")
+    elif e.type is EventType.TURN_ASSIGNED:
+        record["speaker"] = e.payload.get("speaker_id")
+        record["strategy"] = e.payload.get("strategy")
+    elif e.type in (
+        EventType.PERSONA_UPDATED,
+        EventType.PERSONA_UPDATE_CLAMPED,
+        EventType.PERSONA_UPDATE_REJECTED,
+        EventType.APPROVAL_REQUESTED,
+        EventType.APPROVAL_DECIDED,
+    ):
+        record["agent"] = e.payload.get("agent_id")
+        if e.payload.get("proposal") is not None:
+            record["proposal"] = e.payload["proposal"]
+        if e.payload.get("state") is not None:
+            record["state"] = e.payload["state"]
+        if e.payload.get("reason") is not None:
+            record["reason"] = e.payload["reason"]
+        if e.payload.get("notes") is not None:
+            record["notes"] = e.payload["notes"]
+    elif e.type is EventType.LLM_CALL_COMPLETED:
+        record["model"] = e.payload.get("model")
+        record["cost_usd"] = e.payload.get("cost_usd")
+        record["input_tokens"] = e.payload.get("input_tokens")
+        record["output_tokens"] = e.payload.get("output_tokens")
+    else:
+        record["payload"] = e.payload
+    return record
 
 
 def event_from_row(row: EventRow) -> Event:

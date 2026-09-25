@@ -8,6 +8,7 @@ dependencies = [
     # web
     "fastapi>=0.115",
     "uvicorn[standard]>=0.30",
+    "python-multipart>=0.0.9",
     # schemas / config
     "pydantic>=2.8",
     "pydantic-settings>=2.4",
@@ -42,6 +43,7 @@ roundtable = "roundtable.cli:main"
 [project.entry-points."roundtable.turn_strategies"]
 round_robin = "roundtable.strategies.round_robin:RoundRobin"
 hand_raise = "roundtable.strategies.hand_raise:HandRaisePriority"
+bidding = "roundtable.strategies.bidding:Bidding"
 
 [project.entry-points."roundtable.participants"]
 llm = "roundtable.participants.ai_agent:AIAgent"
@@ -133,6 +135,8 @@ filterwarnings = [
     "error",
     "ignore::DeprecationWarning:litellm.*",
     "ignore::DeprecationWarning:pydantic.*",
+    "ignore:.*starlette.testclient.*:UserWarning",
+    "ignore::Warning:starlette.testclient",
 ]
 
 [tool.coverage.run]

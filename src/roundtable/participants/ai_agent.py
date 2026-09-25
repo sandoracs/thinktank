@@ -3,14 +3,21 @@
 ``speak`` runs the pipeline the design prescribes:
 ContextBuilder -> LLMClient -> (consistency check, off by default) -> Message,
 and emits an ``LLMCallCompleted`` event so the engine's cost accounting and the
-live UI see every model call. The engine owns working memory (it is projected
-from the event stream), so ``observe`` is a no-op in M1; episodic summarisation
-lands in M3.
+live UI see every model call. Working memory is projected by the engine from
+the event stream, so ``observe`` is a no-op.
+
+At session end the agent distils its memory (DESIGN.md §11): an episodic
+summary of this session, then up to a few durable long-term lessons, both
+stored through the injected :class:`MemoryBackend` and logged as
+``MemoryWritten`` events.
 """
 
 from __future__ import annotations
 
+import uuid
 from typing import Literal
+
+from pydantic import BaseModel
 
 from roundtable.core.bus import EmitFn
 from roundtable.core.context import ContextBuilder, ParticipantInfo
@@ -18,14 +25,19 @@ from roundtable.core.state import SessionState
 from roundtable.domain.events import EventType, new_message_id
 from roundtable.domain.models import (
     AgentConfig,
+    DriftConfig,
     Layer,
     MemoryHit,
     Message,
+    PersonaState,
     SessionConfig,
 )
-from roundtable.llm.client import LLMClient
+from roundtable.llm.client import ChatMessage, LLMClient, LLMResult, Purpose
 from roundtable.memory.base import MemoryBackend
+from roundtable.memory.distill import episodic_messages, has_lesson, long_term_messages
 from roundtable.participants.base import TurnContext
+from roundtable.persona.prompts import reflection_messages
+from roundtable.persona.reflection import ReflectionResult
 
 
 class AIAgent:
@@ -55,8 +67,10 @@ class AIAgent:
         self._context_builder = context_builder or ContextBuilder()
         self._memory = memory
         self._emit = emit
+        self._session_id: uuid.UUID | None = None
 
     async def speak(self, ctx: TurnContext) -> Message:
+        self._session_id = ctx.session_id
         memories = await self._retrieve_memories(ctx)
         messages = self._context_builder.build(
             config=self._session,
@@ -99,13 +113,143 @@ class AIAgent:
             },
         )
 
+    @property
+    def drift(self) -> DriftConfig:
+        """The agent's drift configuration (used by the engine's reflection loop)."""
+        return self._config.drift
+
+    @property
+    def initial_state(self) -> PersonaState:
+        """The agent's starting persona state (fallback when no update is applied)."""
+        return self._config.initial_state
+
+    async def reflect(self, state: SessionState) -> ReflectionResult | None:
+        """Round-end self-reflection: propose persona-state changes (DESIGN.md §12.2)."""
+        persona_state = state.persona_states.get(self.id) or self._config.initial_state
+        messages, schema = reflection_messages(
+            agent_name=self.display_name,
+            config=self._session,
+            state=state,
+            persona_state=persona_state,
+        )
+        result = await self._complete(
+            purpose="reflection",
+            messages=messages,
+            response_model=schema,
+        )
+        if result is None or result.parsed is None:
+            return None
+        proposal = result.parsed
+        if not isinstance(proposal, ReflectionResult) or proposal.is_empty:
+            return None
+        return proposal
+
     async def observe(self, msg: Message) -> None:
         # Working memory is projected by the engine; nothing to store in M1.
         return None
 
     async def on_session_end(self) -> None:
-        # Long-term distillation (DESIGN.md §11) lands in M3.
-        return None
+        """Distil episodic + long-term memory (DESIGN.md §11)."""
+        if self._memory is None or self._session_id is None:
+            return
+        transcript = self._transcript()
+        if not transcript.strip():
+            return
+
+        summary = await self._complete(
+            purpose="summary",
+            messages=episodic_messages(
+                agent_name=self.display_name,
+                topic=self._session.topic,
+                transcript=transcript,
+            ),
+        )
+        if not summary or not summary.content.strip():
+            return
+        episodic_id = await self._memory.add(
+            self.id,
+            Layer.EPISODIC,
+            summary.content.strip(),
+            self._session_id,
+            None,
+            {"kind": "session_summary"},
+        )
+        await self._emit(
+            EventType.MEMORY_WRITTEN,
+            agent_id=self.id,
+            layer=Layer.EPISODIC.value,
+            memory_id=episodic_id,
+            session_id=str(self._session_id),
+            source_seq=None,
+        )
+
+        if not self._config.memory.long_term:
+            return
+        lessons = await self._complete(
+            purpose="summary",
+            messages=long_term_messages(
+                agent_name=self.display_name,
+                topic=self._session.topic,
+                episodic_summary=summary.content,
+            ),
+        )
+        if lessons is None or not has_lesson(lessons.content):
+            return
+        long_id = await self._memory.add(
+            self.id,
+            Layer.LONG_TERM,
+            lessons.content.strip(),
+            None,
+            None,
+            {"kind": "lesson", "from_session": str(self._session_id)},
+        )
+        await self._emit(
+            EventType.MEMORY_WRITTEN,
+            agent_id=self.id,
+            layer=Layer.LONG_TERM.value,
+            memory_id=long_id,
+            session_id=None,
+            source_seq=None,
+        )
+
+    async def _complete(
+        self,
+        *,
+        purpose: Purpose,
+        messages: list[ChatMessage],
+        response_model: type[BaseModel] | None = None,
+    ) -> LLMResult | None:
+        """One side-call with the (optionally cheaper) summary model + event log."""
+        model = self._config.summary_model or self._config.model
+        try:
+            result = await self._llm.complete(
+                model=model,
+                messages=messages,
+                purpose=purpose,
+                temperature=0.3,
+                max_tokens=400,
+                response_model=response_model,
+            )
+        except Exception:
+            return None
+        await self._emit(
+            EventType.LLM_CALL_COMPLETED,
+            model=result.model,
+            purpose=purpose,
+            input_tokens=result.input_tokens,
+            output_tokens=result.output_tokens,
+            cost_usd=result.cost_usd,
+            duration_ms=result.duration_ms,
+            agent_id=self.id,
+        )
+        return result
+
+    def _transcript(self) -> str:
+        lines: list[str] = []
+        for msg in self._state.messages:
+            name = msg.speaker_id
+            lines.append(f"{name}: {msg.content}")
+        return "\n".join(lines)
 
     async def _retrieve_memories(self, ctx: TurnContext) -> list[MemoryHit]:
         if self._memory is None:

@@ -18,6 +18,7 @@ from pydantic import BaseModel
 
 from roundtable.core.state import SessionState
 from roundtable.domain.events import Event
+from roundtable.llm.client import LLMClient
 
 
 class EmptyParams(BaseModel):
@@ -28,7 +29,11 @@ class TurnStrategy(ABC):
     name: ClassVar[str] = ""
     Params: ClassVar[type[BaseModel]] = EmptyParams
 
-    def __init__(self, params: BaseModel | dict[str, Any] | None = None) -> None:
+    def __init__(
+        self,
+        params: BaseModel | dict[str, Any] | None = None,
+        llm: LLMClient | None = None,
+    ) -> None:
         if isinstance(params, dict):
             data = params
         elif params is not None:
@@ -36,6 +41,8 @@ class TurnStrategy(ABC):
         else:
             data = {}
         self.params = self.Params(**data)
+        # Optional LLM gateway for strategies that need one (e.g. bidding).
+        self._llm = llm
 
     @abstractmethod
     async def next_speaker(self, state: SessionState) -> str | None:

@@ -22,8 +22,10 @@ import uuid
 from roundtable.core.bus import EventBus
 from roundtable.core.state import SessionState, apply_event
 from roundtable.domain.events import Event, EventType, make_event
-from roundtable.domain.models import Message, SessionConfig
+from roundtable.domain.models import DriftMode, Message, PersonaState, SessionConfig
 from roundtable.participants.base import Participant, TurnContext
+from roundtable.persona.manager import PersonaManager
+from roundtable.persona.reflection import ReflectionResult, apply_updates
 from roundtable.storage.repositories import EventStore
 from roundtable.strategies.base import TurnStrategy
 
@@ -73,6 +75,7 @@ class SessionEngine:
         state: SessionState,
         bus: EventBus,
         store: EventStore,
+        persona_manager: PersonaManager | None = None,
     ) -> None:
         self._session_id = session_id
         self._config = config
@@ -85,6 +88,7 @@ class SessionEngine:
         self._stop_reason = ""
         self._started_at: float | None = None
         self._consecutive_errors: dict[str, int] = {}
+        self._persona_manager = persona_manager or PersonaManager()
 
     def bind_participants(self, participants: dict[str, Participant]) -> None:
         """Attach participant instances post-construction (breaks the build cycle)."""
@@ -101,9 +105,18 @@ class SessionEngine:
         self._stop_reason = reason
         self._gate.stop()
 
+    async def raise_hand(self, participant_id: str) -> Event:
+        """Record a raised hand (called by the hub when a human taps the button)."""
+        return await self.emit(EventType.HAND_RAISED, participant_id=participant_id)
+
+
     @property
     def state(self) -> SessionState:
         return self._state
+
+    @property
+    def participants(self) -> dict[str, Participant]:
+        return self._participants
 
     @property
     def session_id(self) -> uuid.UUID:
@@ -184,8 +197,145 @@ class SessionEngine:
     async def _end_round(self) -> None:
         round_no = self._state.current_round
         await self.emit(EventType.ROUND_ENDED, round=round_no)
-        # Reflection / moderator summary are wired in M4.
+        await self._reflect_round(round_no)
         self._state.round_complete = False
+
+    # -- reflection (DESIGN.md §12.2, M4) ---------------------------------
+    async def _reflect_round(self, round_no: int) -> None:
+        """Ask each AI participant to reflect; evaluate + record the proposal."""
+        if round_no % max(1, self._config.reflection_every_rounds) != 0:
+            return
+        for pid, participant in self._participants.items():
+            if participant.kind != "ai" or pid in self._state.disabled:
+                continue
+            drift = getattr(participant, "drift", None)
+            if (
+                drift is not None
+                and drift.mode is DriftMode.LOCKED
+                and not drift.shadow_reflection
+            ):
+                # LOCKED without shadow: the design does not even run reflection
+                # (DESIGN.md §12.2) — nothing to propose, nothing to log.
+                continue
+            try:
+                proposal = await participant.reflect(self._state)
+            except Exception as exc:
+                logger.exception("reflect failed for %s", pid)
+                await self.emit(EventType.ERROR, component="reflect", message=str(exc))
+                continue
+            if proposal is None:
+                continue
+            # Shadow log: every non-empty proposal is recorded, whether or not
+            # the drift policy later applies it (DESIGN.md §12.3 shadow mode).
+            shadow = drift is not None and bool(drift.shadow_reflection)
+            proposed = await self.emit(
+                EventType.REFLECTION_PROPOSED,
+                agent_id=pid,
+                proposal=proposal.model_dump(),
+                round=round_no,
+                shadow=shadow,
+            )
+            await self._settle_reflection(pid, proposal, proposed.seq)
+
+    def _current_persona(self, pid: str) -> PersonaState:
+        if pid in self._state.persona_states:
+            return self._state.persona_states[pid]
+        participant = self._participants.get(pid)
+        initial = getattr(participant, "initial_state", None)
+        return initial if isinstance(initial, PersonaState) else PersonaState()
+
+    async def _settle_reflection(
+        self, pid: str, proposal: ReflectionResult, cause_seq: int
+    ) -> None:
+        drift = getattr(self._participants.get(pid), "drift", None)
+        if drift is None:
+            return
+        decision = self._persona_manager.evaluate(self._current_persona(pid), proposal, drift)
+        if decision.action in ("apply", "clamp") and decision.new_state is not None:
+            etype = (
+                EventType.PERSONA_UPDATED
+                if decision.action == "apply"
+                else EventType.PERSONA_UPDATE_CLAMPED
+            )
+            await self._commit_persona(pid, decision.new_state, etype, cause_seq, decision.notes)
+        elif decision.action == "needs_approval":
+            # Approval workflow lands in M6; record the request, no state change.
+            await self.emit(
+                EventType.APPROVAL_REQUESTED,
+                agent_id=pid,
+                proposal=proposal.model_dump(),
+                cause_seq=cause_seq,
+            )
+        else:
+            await self.emit(
+                EventType.PERSONA_UPDATE_REJECTED,
+                agent_id=pid,
+                reason=decision.reason or "rejected",
+                cause_seq=cause_seq,
+                notes=decision.notes,
+            )
+
+    async def _commit_persona(
+        self,
+        pid: str,
+        new_state: PersonaState,
+        etype: EventType,
+        cause_seq: int,
+        notes: list[str] | None = None,
+    ) -> None:
+        version = await self._store.next_persona_version(pid, self._session_id)
+        await self._store.append_persona_version(
+            pid, self._session_id, version, new_state.model_dump(), cause_seq
+        )
+        await self.emit(
+            etype,
+            agent_id=pid,
+            version=version,
+            state=new_state,
+            cause_seq=cause_seq,
+            notes=notes or [],
+        )
+
+    # -- approvals (DESIGN.md §12.3, M6) ---------------------------------
+    async def decide_approval(self, agent_id: str, decision: str) -> bool:
+        """Approve or reject a pending persona change (APPROVED drift mode).
+
+        ``approve`` applies the stored proposal to the current persona state and
+        records ``PersonaUpdated``; ``reject`` records ``PersonaUpdateRejected``.
+        Either way an ``ApprovalDecided`` event is emitted and the pending row is
+        closed. Returns ``True`` if a pending approval was found and decided.
+        """
+        approvals = await self._store.list_approvals(self._session_id, agent_id=agent_id)
+        pending = next((a for a in approvals if a["status"] == "pending"), None)
+        if pending is None:
+            return False
+        proposal = ReflectionResult.model_validate(pending["proposal"])
+        current = self._current_persona(agent_id)
+        if decision == "approve":
+            new_state = apply_updates(current, proposal)
+            version = await self._store.next_persona_version(agent_id, self._session_id)
+            await self._store.append_persona_version(
+                agent_id, self._session_id, version, new_state.model_dump(), None
+            )
+            await self.emit(
+                EventType.PERSONA_UPDATED,
+                agent_id=agent_id,
+                version=version,
+                state=new_state,
+                notes=["approved"],
+            )
+        else:
+            await self.emit(
+                EventType.PERSONA_UPDATE_REJECTED,
+                agent_id=agent_id,
+                reason="not_approved",
+                notes=["rejected by approver"],
+            )
+        await self._store.decide_approval_row(
+            self._session_id, agent_id, "approved" if decision == "approve" else "rejected"
+        )
+        await self.emit(EventType.APPROVAL_DECIDED, agent_id=agent_id, decision=decision)
+        return True
 
     async def _start_round(self, round_no: int) -> None:
         await self.emit(EventType.ROUND_STARTED, round=round_no)

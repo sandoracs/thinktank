@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="live">
+  <section class="transcript-wrap">
+    <div class="live-head">
+      <h1>{{ state.config.title if state.config else 'Session' }}</h1>
+      <div class="controls">
+        <button class="btn" data-ctl="pause" disabled>Pause</button>
+        <button class="btn" data-ctl="resume" disabled>Resume</button>
+        <button class="btn btn-danger" data-ctl="stop" disabled>Stop</button>
+      </div>
+    </div>
+    <div id="transcript" class="transcript" data-last-seq="0"></div>
+    {% if human_id %}
+    <div class="human-bar">
+      <input id="say-input" type="text" placeholder="Írd a hozzászólásod..." disabled autocomplete="off">
+      <button id="say-send" class="btn btn-primary" disabled>Küldés</button>
+      <button id="raise-hand" class="btn" disabled>✋ Kéz fel</button>
+      <span id="turn-hint" class="hint"></span>
+    </div>
+    {% endif %}
+    {% if approvals %}
+    <section class="approvals" id="approvals-panel">
+      <h2>Jóváhagyandó perszónaváltozások</h2>
+      {% for a in approvals %}
+      <div class="approval" data-agent="{{ a.agent_id }}">
+        <div class="approval-proposal">
+          <strong>{{ a.agent_id }}</strong>
+          <pre>{{ a.proposal }}</pre>
+        </div>
+        <div class="approval-actions">
+          <button class="btn btn-primary" data-decision="approve">Jóváhagyás</button>
+          <button class="btn" data-decision="reject">Elutasítás</button>
+        </div>
+      </div>
+      {% endfor %}
+    </section>
+    {% endif %}
+  </section>
+    {{ sidebar|safe }}
+  </aside>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/live.js" defer></script>
+{% endblock %}

@@ -14,9 +14,11 @@ from __future__ import annotations
 import asyncio
 from typing import Literal
 
+from roundtable.core.state import SessionState
 from roundtable.domain.events import new_message_id
 from roundtable.domain.models import Message
 from roundtable.participants.base import TurnContext
+from roundtable.persona.reflection import ReflectionResult
 
 
 class HumanParticipant:
@@ -35,6 +37,7 @@ class HumanParticipant:
         self._is_moderator = is_moderator
         self._pending: asyncio.Future[str] | None = None
         self._hand_raised = False
+        self._cancelled = False
 
     @property
     def hand_raised(self) -> bool:
@@ -44,6 +47,7 @@ class HumanParticipant:
         loop = asyncio.get_running_loop()
         future: asyncio.Future[str] = loop.create_future()
         self._pending = future
+        self._cancelled = False
         timed_out = False
         try:
             content = await asyncio.wait_for(future, timeout=self._timeout_s)
@@ -53,7 +57,7 @@ class HumanParticipant:
         finally:
             self._pending = None
 
-        if timed_out:
+        if timed_out or self._cancelled or not content:
             return None
 
         # Speaking lowers a raised hand (the engine also does this from the
@@ -74,6 +78,12 @@ class HumanParticipant:
         if self._pending is not None and not self._pending.done():
             self._pending.set_result(content)
 
+    def cancel_turn(self) -> None:
+        """Abandon an in-flight turn (pause/stop); ``speak`` then returns ``None``."""
+        self._cancelled = True
+        if self._pending is not None and not self._pending.done():
+            self._pending.set_result("")
+
     def raise_hand(self) -> None:
         self._hand_raised = True
 
@@ -84,5 +94,8 @@ class HumanParticipant:
         return None
 
     async def on_session_end(self) -> None:
+        return None
+
+    async def reflect(self, state: SessionState) -> ReflectionResult | None:
         return None
 

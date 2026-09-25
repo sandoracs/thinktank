@@ -47,9 +47,17 @@ class Settings(BaseSettings):
     llm_max_concurrency: int = Field(default=8, ge=1, description="Global cap on concurrent LLM calls.")
     embedding_model: str = Field(
         default="paraphrase-multilingual-MiniLM-L12-v2",
-        description="Default multilingual embedding model (see DESIGN.md §11).",
+        description="Multilingual embedding model for the ``litellm`` backend (DESIGN.md §11).",
     )
-
+    embedding_backend: str = Field(
+        default="fake",
+        description='"fake" (deterministic, offline) or "litellm" (Ollama/hosted API).',
+    )
+    embedding_dim: int = Field(
+        default=32,
+        ge=8,
+        description="Embedding vector dimension; must match the provider's output size.",
+    )
     # --- logging ---
     log_level: str = Field(default="INFO", description="structlog level name (DEBUG, INFO, ...).")
     log_json: bool = Field(default=True, description="Emit JSON logs instead of pretty console logs.")

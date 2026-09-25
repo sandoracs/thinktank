@@ -15,7 +15,7 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel, ConfigDict
 
-Purpose = Literal["speech", "summary", "reflection", "judge"]
+Purpose = Literal["speech", "summary", "reflection", "judge", "bid"]
 
 
 class ChatMessage(BaseModel):

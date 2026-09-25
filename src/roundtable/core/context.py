@@ -140,8 +140,9 @@ class ContextBuilder:
         )
 
     def _agent_state(self, state: SessionState, agent: AgentConfig) -> PersonaState:
-        # Persona state is tracked per-agent; fall back to the configured initial
-        # state when the session has not yet recorded any updates (M4 wires this).
+        """The agent's live persona state (M4: per-agent updates from reflections)."""
+        if agent.id in state.persona_states:
+            return state.persona_states[agent.id]
         return agent.initial_state
 
     def _state_block(self, st: PersonaState) -> str:

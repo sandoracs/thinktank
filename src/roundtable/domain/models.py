@@ -149,6 +149,7 @@ class AgentConfig(BaseModel):
     id: str
     type: str = "llm"
     model: str
+    summary_model: str = Field(default="", description="Optional cheaper model for side calls (summaries).")
     temperature: float = Field(default=0.8, ge=0.0, le=2.0)
     max_tokens: int = Field(default=600, ge=1)
     persona: PersonaCore

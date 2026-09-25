@@ -15,6 +15,7 @@ from pydantic import BaseModel, Field
 from roundtable.core.state import SessionState
 from roundtable.domain.events import Event
 from roundtable.domain.models import StrategyRef
+from roundtable.llm.client import LLMClient
 from roundtable.strategies.base import TurnStrategy
 
 
@@ -28,14 +29,16 @@ class HandRaisePriority(TurnStrategy):
         self,
         params: BaseModel | dict[str, Any] | None = None,
         inner: TurnStrategy | None = None,
+        llm: LLMClient | None = None,
     ) -> None:
-        super().__init__(params)
+        super().__init__(params, llm=llm)
         if inner is not None:
             self._inner: TurnStrategy = inner
         else:
             from roundtable.plugins.registry import build_strategy
 
-            self._inner = build_strategy(StrategyRef(**self.params.model_dump().get("inner", {})))
+            inner_ref = StrategyRef(**self.params.model_dump().get("inner", {}))
+            self._inner = build_strategy(inner_ref, llm=llm)
 
     async def next_speaker(self, state: SessionState) -> str | None:
         raised = list(state.hands_raised)

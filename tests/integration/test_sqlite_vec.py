@@ -7,6 +7,8 @@ fails if the extension cannot be loaded (threading) or queried.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 import sqlite_vec
 
@@ -14,7 +16,7 @@ from roundtable.storage.db import init_db, make_engine
 
 
 @pytest.mark.asyncio
-async def test_sqlite_vec_loads_and_queries_under_aiosqlite(tmp_path) -> None:
+async def test_sqlite_vec_loads_and_queries_under_aiosqlite(tmp_path: Path) -> None:
     engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'vec.db'}", load_vec=True)
     await init_db(engine)
     async with engine.connect() as conn:
@@ -34,10 +36,12 @@ async def test_sqlite_vec_loads_and_queries_under_aiosqlite(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_wal_mode_is_set_on_real_database(tmp_path) -> None:
+async def test_wal_mode_is_set_on_real_database(tmp_path: Path) -> None:
     engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'wal.db'}")
     await init_db(engine)
     async with engine.connect() as conn:
-        mode = (await conn.exec_driver_sql("PRAGMA journal_mode;")).fetchone()[0]
+        row = (await conn.exec_driver_sql("PRAGMA journal_mode;")).fetchone()
+        assert row is not None
+        mode = row[0]
     await engine.dispose()
     assert mode.lower() == "wal"

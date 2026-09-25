@@ -1,0 +1,153 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Session-építő</h1>
+<form method="post" action="/sessions" class="builder">
+  <label>Cím
+    <input name="title" required placeholder="pl. Lehet-e egy LLM társszerző?">
+  </label>
+  <label>Téma
+    <textarea name="topic" rows="3" required placeholder="A vita tárgya és kerete..."></textarea>
+  </label>
+  <div class="row">
+    <label>Nyelv
+      <select name="language">
+        <option value="hu" selected>magyar</option>
+        <option value="en">angol</option>
+      </select>
+    </label>
+    <label>Vitakérdések (soronként egy)
+      <textarea name="questions" rows="3" class="grow" placeholder="Feltüntethető-e egy LLM szerzőként?&#10;Kötelező legyen-e közölni az AI-használatot?"></textarea>
+    </label>
+  </div>
+
+  <fieldset>
+    <legend>Résztvevők</legend>
+    <label>Agentek
+      <select name="agents" multiple size="{{ agents|length or 4 }}" class="grow">
+        {% for a in agents %}
+        <option value="{{ a.id }}">{{ a.persona.name }} — {{ a.persona.role }}</option>
+        {% endfor %}
+      </select>
+      <span class="hint">(Ctrl/Cmd-click a többi kiválasztásához)</span>
+    </label>
+    <label>Emberek (vesszővel elválasztva)
+      <input name="humans" placeholder="pl. Sándor">
+    </label>
+    <label>Moderátor
+      <select name="moderator">
+        <option value="">— (AI-moderátor nincs) —</option>
+        {% for a in agents %}
+        <option value="{{ a.id }}">{{ a.persona.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Folytatás és leállás</legend>
+    <div class="row">
+      <label>Szórendi stratégia
+        <select name="strategy" id="strategy-select">
+          {% for s in strategies %}
+          <option value="{{ s }}" {{ 'selected' if s == 'round_robin' else '' }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Max. körök
+        <input name="max_rounds" type="number" min="1" value="3" class="narrow">
+      </label>
+      <label>Max. költség (USD)
+        <input name="max_cost_usd" type="number" min="0" step="0.1" value="1.5" class="narrow">
+      </label>
+    </div>
+    <div id="strategy-params" class="strategy-params"></div>
+    <input type="hidden" name="strategy_params" id="strategy-params-json" value="{}">
+  </fieldset>
+
+  <p class="actions">
+    <button type="submit" class="btn btn-primary">Session létrehozása és indítása</button>
+    <a class="btn" href="/">Mégse</a>
+  </p>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const select = document.getElementById("strategy-select");
+  const host = document.getElementById("strategy-params");
+  const jsonInput = document.getElementById("strategy-params-json");
+  if (!select || !host || !jsonInput) return;
+
+  let schemas = {};
+
+  function render(name) {
+    const schema = (schemas[name] && schemas[name].params_schema) || null;
+    host.innerHTML = "";
+    const fields = (schema && schema.properties) || {};
+    const keys = Object.keys(fields);
+    if (keys.length === 0) {
+      jsonInput.value = "{}";
+      return;
+    }
+    const values = {};
+    const row = document.createElement("div");
+    row.className = "row strategy-param-row";
+    for (const key of keys) {
+      const spec = fields[key];
+      const label = document.createElement("label");
+      label.textContent = key;
+      const input = document.createElement("input");
+      input.name = "sp_" + key;
+      input.className = "narrow";
+      if (spec.type === "number" || spec.type === "integer") {
+        input.type = "number";
+        if (spec.default !== undefined) input.value = spec.default;
+      } else if (spec.type === "boolean") {
+        input.type = "checkbox";
+        if (spec.default) input.checked = true;
+      } else {
+        input.type = "text";
+        if (spec.default !== undefined) input.value = spec.default;
+      }
+      label.appendChild(" ");
+      label.appendChild(input);
+      row.appendChild(label);
+    }
+    host.appendChild(row);
+    // Keep the hidden JSON in sync with the rendered inputs.
+    const sync = () => {
+      const out = {};
+      for (const key of keys) {
+        const el = host.querySelector('[name="sp_' + key + '"]');
+        if (!el) continue;
+        const spec = fields[key] || {};
+        if (spec.type === "boolean") out[key] = el.checked;
+        else if (spec.type === "number" || spec.type === "integer") {
+          out[key] = el.value === "" ? undefined : Number(el.value);
+        } else out[key] = el.value;
+      }
+      jsonInput.value = JSON.stringify(out);
+    };
+    row.addEventListener("input", sync);
+    row.addEventListener("change", sync);
+    // initial sync
+    setTimeout(sync, 0);
+  }
+
+  select.addEventListener("change", () => render(select.value));
+
+  fetch("/api/plugins")
+    .then((r) => r.json())
+    .then((data) => {
+      for (const s of data.turn_strategies || []) {
+        schemas[s.name] = s;
+      }
+      render(select.value);
+    })
+    .catch(() => {
+      host.innerHTML = '<span class="hint">(stratégiaparaméterek nem érhetők el)</span>';
+    });
+})();
+</script>
+{% endblock %}

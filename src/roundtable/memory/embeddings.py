@@ -66,3 +66,14 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
         result = await litellm.aembedding(model=self.model, input=texts)
         data = result["data"]
         return [d["embedding"] for d in data]
+
+
+def build_embedding_provider(*, backend: str, model: str, dim: int) -> EmbeddingProvider:
+    """Construct the configured embedder (DESIGN.md §11).
+
+    ``fake`` is the offline default (deterministic vectors, no download);
+    ``litellm`` routes through Ollama or a hosted API.
+    """
+    if backend == "litellm":
+        return LiteLLMEmbeddingProvider(model, dim=dim)
+    return FakeEmbeddingProvider(dim=dim)

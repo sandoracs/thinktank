@@ -21,12 +21,13 @@ from roundtable.domain.events import (
     EventType,
     MessagePostedPayload,
     ParticipantRefPayload,
+    PersonaUpdatedPayload,
     RoundPayload,
     SessionCreatedPayload,
     SessionEndedPayload,
     TurnAssignedPayload,
 )
-from roundtable.domain.models import Message, SessionConfig
+from roundtable.domain.models import Message, PersonaState, SessionConfig
 
 # Durable session lifecycle values (DESIGN.md §7).
 STATUS_CREATED = "created"
@@ -60,6 +61,7 @@ class SessionState(BaseModel):
     disabled: list[str] = Field(default_factory=list)
     current_speaker: str | None = None
     ended_reason: str | None = None
+    persona_states: dict[str, PersonaState] = Field(default_factory=dict)
     started_at: datetime | None = None
     ended_at: datetime | None = None
 
@@ -118,6 +120,9 @@ def apply_event(state: SessionState, event: Event) -> SessionState:
         payload = event.payload_as(ParticipantRefPayload)
         if payload.participant_id not in state.disabled:
             state.disabled.append(payload.participant_id)
+    elif t is EventType.PERSONA_UPDATED:
+        payload = event.payload_as(PersonaUpdatedPayload)
+        state.persona_states[payload.agent_id] = payload.state
 
     return state
 

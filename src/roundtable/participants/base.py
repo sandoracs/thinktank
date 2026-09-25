@@ -14,7 +14,9 @@ from typing import Literal, Protocol, runtime_checkable
 
 from pydantic import BaseModel
 
+from roundtable.core.state import SessionState
 from roundtable.domain.models import Message
+from roundtable.persona.reflection import ReflectionResult
 
 
 class TurnContext(BaseModel):
@@ -41,4 +43,8 @@ class Participant(Protocol):
 
     async def on_session_end(self) -> None:
         """Session teardown hook (e.g. distil long-term lessons)."""
+        ...
+
+    async def reflect(self, state: SessionState) -> ReflectionResult | None:
+        """Round-end self-reflection: propose persona-state changes, or ``None``."""
         ...

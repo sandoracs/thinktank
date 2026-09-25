@@ -16,7 +16,7 @@ from typing import Any, TypeVar
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from roundtable.domain.models import Message, SessionConfig
+from roundtable.domain.models import Message, PersonaState, SessionConfig
 
 T = TypeVar("T", bound=BaseModel)
 
@@ -103,6 +103,44 @@ class LLMCallCompletedPayload(_Payload):
     agent_id: str | None = None
 
 
+class MemoryWrittenPayload(_Payload):
+    agent_id: str
+    layer: str  # episodic | long_term
+    memory_id: int
+    session_id: str | None = None
+    source_seq: int | None = None
+
+
+class ReflectionProposedPayload(_Payload):
+    agent_id: str
+    proposal: dict[str, Any]
+    round: int
+    shadow: bool = False
+
+
+class PersonaUpdatedPayload(_Payload):
+    agent_id: str
+    version: int
+    state: PersonaState
+    cause_seq: int | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class PersonaUpdateClampedPayload(_Payload):
+    agent_id: str
+    version: int
+    state: PersonaState
+    cause_seq: int | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
+class PersonaUpdateRejectedPayload(_Payload):
+    agent_id: str
+    reason: str
+    cause_seq: int | None = None
+    notes: list[str] = Field(default_factory=list)
+
+
 class ParticipantDisabledPayload(_Payload):
     participant_id: str
     reason: str
@@ -128,6 +166,11 @@ PAYLOAD_MODELS: dict[EventType, type[_Payload]] = {
     EventType.HAND_LOWERED: ParticipantRefPayload,
     EventType.MODERATOR_INTERVENED: ModeratorIntervenedPayload,
     EventType.LLM_CALL_COMPLETED: LLMCallCompletedPayload,
+    EventType.MEMORY_WRITTEN: MemoryWrittenPayload,
+    EventType.REFLECTION_PROPOSED: ReflectionProposedPayload,
+    EventType.PERSONA_UPDATED: PersonaUpdatedPayload,
+    EventType.PERSONA_UPDATE_CLAMPED: PersonaUpdateClampedPayload,
+    EventType.PERSONA_UPDATE_REJECTED: PersonaUpdateRejectedPayload,
     EventType.PARTICIPANT_DISABLED: ParticipantDisabledPayload,
     EventType.ERROR: ErrorPayload,
 }
@@ -135,11 +178,6 @@ PAYLOAD_MODELS: dict[EventType, type[_Payload]] = {
 # Events with a payload not yet given a dedicated schema in M0/M1 (M3-M6); they
 # carry a free-form JSON payload until their milestone lands.
 OPEN_PAYLOAD: tuple[EventType, ...] = (
-    EventType.MEMORY_WRITTEN,
-    EventType.REFLECTION_PROPOSED,
-    EventType.PERSONA_UPDATED,
-    EventType.PERSONA_UPDATE_REJECTED,
-    EventType.PERSONA_UPDATE_CLAMPED,
     EventType.APPROVAL_REQUESTED,
     EventType.APPROVAL_DECIDED,
     EventType.CONSISTENCY_VIOLATION,

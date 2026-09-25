@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from roundtable.core.state import SessionState
 from roundtable.domain.events import Event, EventType, SessionCreatedPayload
+from roundtable.llm.client import LLMClient
 from roundtable.strategies.base import TurnStrategy
 
 
@@ -29,8 +30,12 @@ class RoundRobin(TurnStrategy):
         shuffle_each_round: bool = False
         seed: int = 0
 
-    def __init__(self, params: BaseModel | dict[str, object] | None = None) -> None:
-        super().__init__(params)
+    def __init__(
+        self,
+        params: BaseModel | dict[str, object] | None = None,
+        llm: LLMClient | None = None,
+    ) -> None:
+        super().__init__(params, llm=llm)
         self._order: list[str] = []
         self._spoken: set[str] = set()
 

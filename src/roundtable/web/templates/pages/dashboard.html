@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sessions</h1>
+<table class="grid">
+  <thead>
+    <tr><th>Cím</th><th>Állapot</th><th>Kör</th><th>Üzenet</th><th>Költség</th></tr>
+  </thead>
+  <tbody>
+    {% for s in sessions %}
+    <tr>
+      <td><a href="/sessions/{{ s.id }}">{{ s.title }}</a> · <a href="/sessions/{{ s.id }}/replay" class="replay-link">visszajátszás</a></td>
+      <td><span class="status-chip status-{{ s.status }}">{{ s.status }}</span></td>
+      <td>{{ s.round }}</td>
+      <td>{{ s.messages }}</td>
+      <td>${{ '%.2f'|format(s.cost) }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" class="muted">Még nincs session. Indítsd az <a href="/sessions/new">első vitát</a>.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p><a class="btn" href="/sessions/new">+ Új session</a></p>
+{% endblock %}

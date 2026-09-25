@@ -22,7 +22,9 @@ from roundtable.core.manager import SessionManager
 from roundtable.domain.events import Event, EventType, MessagePostedPayload
 from roundtable.domain.models import AgentConfig, SessionConfig
 from roundtable.llm.client import LLMClient
-from roundtable.storage.db import dispose, init_db, make_engine, make_session_factory
+from roundtable.memory.embeddings import build_embedding_provider
+from roundtable.memory.sqlite import SQLiteMemoryBackend
+from roundtable.storage.db import dispose, init_db, init_memory_tables, make_engine, make_session_factory
 from roundtable.storage.repositories import EventStore
 
 logger = logging.getLogger("roundtable")
@@ -70,13 +72,20 @@ async def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
     config, agents = _load_session(args.session)
 
-    engine = make_engine()
+    engine = make_engine(load_vec=True)
     await init_db(engine)
+    embedder = build_embedding_provider(
+        backend=settings.embedding_backend,
+        model=settings.embedding_model,
+        dim=settings.embedding_dim,
+    )
+    await init_memory_tables(engine, embedder.dim, embedder.name)
     factory = make_session_factory(engine)
     store = EventStore(factory)
     manager = SessionManager(
         store=store,
         llm=_build_llm(args.fake),
+        memory=SQLiteMemoryBackend(engine, embedder),
         default_model=settings.default_model,
         human_timeout_s=args.human_timeout,
     )
@@ -94,6 +103,9 @@ async def _run(args: argparse.Namespace) -> int:
             print(f"\n=== Round {event.payload.get('round')} ===")
         elif event.type is EventType.SESSION_ENDED:
             print(f"\n=== Session ended: {event.payload.get('reason')} ===")
+        elif event.type is EventType.MEMORY_WRITTEN:
+            payload = event.payload
+            print(f"\n[memory] {payload.get('agent_id')} wrote {payload.get('layer')} (id={payload.get('memory_id')})")
 
     manager.subscribe(session_id, _print_event)
 
@@ -108,6 +120,53 @@ async def _run(args: argparse.Namespace) -> int:
     print("=" * 40)
 
     await dispose(engine)
+    return 0
+
+
+def _export(args: argparse.Namespace) -> int:
+    import uuid as _uuid
+
+    from roundtable.storage.db import make_engine, make_session_factory
+    from roundtable.storage.repositories import EventStore
+
+    try:
+        session_id = _uuid.UUID(args.session)
+    except ValueError:
+        print(f"error: {args.session!r} is not a valid session id", file=sys.stderr)
+        return 2
+
+    async def _read() -> str:
+        engine = make_engine()
+        store = EventStore(make_session_factory(engine))
+        try:
+            return await store.export(session_id, format=args.format)
+        finally:
+            await engine.dispose()
+
+    text = asyncio.run(_read())
+
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"wrote {len(text)} bytes to {args.out}")
+    else:
+        sys.stdout.write(text)
+    return 0
+
+
+def _serve(args: argparse.Namespace) -> int:
+    import uvicorn
+    settings = get_settings()
+    host = args.host or settings.host
+    port = args.port or settings.port
+    print(f"Roundtable hub on http://{host}:{port}  (Ctrl-C to stop)")
+    uvicorn.run(
+        "roundtable.web.app:asgi_factory",
+        factory=True,
+        host=host,
+        port=port,
+        reload=args.reload,
+        log_level="info",
+    )
     return 0
 
 
@@ -126,18 +185,25 @@ def main(argv: list[str] | None = None) -> int:
     )
     run_p.add_argument("-q", "--quiet", action="store_true", help="Suppress live transcript printing.")
 
-    sub.add_parser("serve", help="Start the web hub (available in M2).")
-    sub.add_parser("export", help="Export a session (available in M6).")
+    serve_p = sub.add_parser("serve", help="Start the web hub (M2).")
+    serve_p.add_argument("--host", default=None, help="Bind host (default from settings, 127.0.0.1).")
+    serve_p.add_argument("--port", type=int, default=None, help="Bind port (default from settings, 8080).")
+    serve_p.add_argument("--reload", action="store_true", help="Enable uvicorn auto-reload (development).")
+    export_p = sub.add_parser("export", help="Export a session's event stream (DESIGN.md §14.1, M6).")
+    export_p.add_argument("session", help="Session id (UUID) to export.")
+    export_p.add_argument("--format", choices=["jsonl", "csv"], default="jsonl", help="Output format (default jsonl).")
+    export_p.add_argument("--out", default=None, help="Write to this file instead of stdout.")
     sub.add_parser("reembed", help="Recompute embeddings after a model change (available in M3).")
 
     args = parser.parse_args(argv)
-    logging.basicConfig(level=logging.INFO if not args.quiet else logging.WARNING, stream=sys.stderr)
+    logging.basicConfig(level=logging.INFO if not getattr(args, "quiet", False) else logging.WARNING, stream=sys.stderr)
 
     if args.command == "run":
         return asyncio.run(_run(args))
     if args.command == "serve":
-        print("The web hub lands in M2. For M1, use `roundtable run <template.yaml>`.")
-        return 0
+        return _serve(args)
+    if args.command == "export":
+        return _export(args)
     print(f"`roundtable {args.command}` is available in a later milestone (see DESIGN.md §18).")
     return 0
 

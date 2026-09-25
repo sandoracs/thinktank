@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from roundtable.core.context import ContextBuilder
@@ -21,7 +23,7 @@ from roundtable.storage.db import init_db, make_engine, make_session_factory
 from roundtable.storage.repositories import EventStore
 
 
-def _build(tmp_path):
+def _build(tmp_path: Path):
     engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 'test.db'}")
     store = EventStore(make_session_factory(engine))
     config = SessionConfig(
@@ -54,7 +56,7 @@ def _build(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_full_run_produces_messages_and_events(tmp_path) -> None:
+async def test_full_run_produces_messages_and_events(tmp_path: Path) -> None:
     engine, store, mgr, config, agents = _build(tmp_path)
     await init_db(engine)
     sess = await mgr.create_session(config, agents)

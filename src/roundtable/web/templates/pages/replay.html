@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="replay">
+  <div class="live-head">
+    <h1>Visszajátszás — {{ state.config.title if state.config else 'Session' }}</h1>
+    <div class="controls">
+      <button class="btn" id="rp-first" title="Ugrás az elejére">⏮</button>
+      <button class="btn" id="rp-prev" title="Előző esemény">◀</button>
+      <button class="btn btn-primary" id="rp-play" title="Automatikus lejátszás">▶</button>
+      <button class="btn" id="rp-next" title="Következő esemény">▶</button>
+      <button class="btn" id="rp-last" title="Ugrás a végére">⏭</button>
+    </div>
+  </div>
+  <div class="replay-meta">
+    <span id="rp-progress" class="hint">0 / 0 esemény</span>
+    <span class="hint">Állapot: <strong id="rp-status">{{ state.status }}</strong></span>
+  </div>
+  <ol id="rp-events" class="replay-events" data-total="0"></ol>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/replay.js" defer></script>
+{% endblock %}

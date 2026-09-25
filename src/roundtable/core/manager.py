@@ -49,6 +49,11 @@ class SessionManager:
         self._human_timeout_s = human_timeout_s
         self._engines: dict[uuid.UUID, SessionEngine] = {}
 
+    @property
+    def human_timeout_s(self) -> float:
+        """Seconds a human has to answer before the turn is skipped (DESIGN.md §8.1)."""
+        return self._human_timeout_s
+
     # -- lifecycle ---------------------------------------------------------
     async def recover_on_start(self) -> int:
         """Mark any leftover ``running`` sessions as ``interrupted``."""
@@ -63,7 +68,7 @@ class SessionManager:
         await self._store.create_session(session_id, config)
         created = await self._bus.emit(session_id, make_event(EventType.SESSION_CREATED, config=config))
 
-        strategy: TurnStrategy = build_strategy(config.strategy)
+        strategy: TurnStrategy = build_strategy(config.strategy, llm=self._llm)
         events = await self._store.get_events(session_id)
         state = project(session_id, events)
 
@@ -150,6 +155,15 @@ class SessionManager:
 
     def stop(self, engine: SessionEngine, reason: str = "manual") -> None:
         engine.stop(reason)
+
+    # -- approvals (DESIGN.md §12.3, M6) ----------------------------------
+    async def list_approvals(
+        self, session_id: uuid.UUID, agent_id: str | None = None
+    ) -> list[dict[str, object]]:
+        return await self._store.list_approvals(session_id, agent_id=agent_id)
+
+    async def decide_approval(self, session_id: uuid.UUID, agent_id: str, decision: str) -> bool:
+        return await self.engine_for(session_id).decide_approval(agent_id, decision)
 
     # -- inspection --------------------------------------------------------
     async def get_state(self, session_id: uuid.UUID) -> SessionState:

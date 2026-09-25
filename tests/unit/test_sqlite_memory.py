@@ -15,7 +15,15 @@ import pytest
 from roundtable.domain.models import Layer
 from roundtable.memory.embeddings import FakeEmbeddingProvider
 from roundtable.memory.sqlite import SQLiteMemoryBackend, fts_query
-from roundtable.storage.db import init_db, init_memory_tables, make_engine
+from roundtable.storage.db import init_db, init_memory_tables, make_engine, stored_embedding_model
+
+
+class NamedFake(FakeEmbeddingProvider):
+    """A deterministic embedder with a configurable name (simulates a model swap)."""
+
+    def __init__(self, dim: int, name: str) -> None:
+        super().__init__(dim=dim)
+        self.name = name
 
 DIM = 16
 SID1 = uuid.uuid4()
@@ -113,6 +121,57 @@ async def test_dim_change_rebuilds_tables(tmp_path: Path) -> None:
     # Swapping to a wider embedder drops the old memory and starts fresh.
     await init_memory_tables(engine, 32, "wider")
     assert await backend.search("agent_a", "original", 5, {Layer.LONG_TERM}) == []
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reembed_same_dim_keeps_items_and_updates_model(tmp_path: Path) -> None:
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 're.db'}", load_vec=True)
+    await init_db(engine)
+    old = FakeEmbeddingProvider(dim=DIM)
+    await init_memory_tables(engine, DIM, old.name)
+    backend = SQLiteMemoryBackend(engine, old)
+    await backend.add("agent_a", Layer.LONG_TERM, "lesson about model ethics", None, None, {})
+    assert await backend.search("agent_a", "ethics", 5, {Layer.LONG_TERM})
+
+    # Same-dimension model swap: re-embed keeps the items (no fresh start).
+    new = NamedFake(dim=DIM, name="new-model")
+    count = await backend.reembed(new)
+    assert count == 1
+    assert await stored_embedding_model(engine) == "new-model"
+    assert await backend.search("agent_a", "ethics", 5, {Layer.LONG_TERM})
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reembed_dim_change_rebuilds_vector_table(tmp_path: Path) -> None:
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 're2.db'}", load_vec=True)
+    await init_db(engine)
+    old = FakeEmbeddingProvider(dim=DIM)
+    await init_memory_tables(engine, DIM, old.name)
+    backend = SQLiteMemoryBackend(engine, old)
+    await backend.add("agent_a", Layer.LONG_TERM, "cross dimension lesson", None, None, {})
+
+    new = NamedFake(dim=32, name="wider")
+    count = await backend.reembed(new)
+    assert count == 1
+    assert await stored_embedding_model(engine) == "wider"
+    # A backend bound to the new provider can search the rebuilt table.
+    wider = SQLiteMemoryBackend(engine, new)
+    hits = await wider.search("agent_a", "lesson", 5, {Layer.LONG_TERM})
+    assert len(hits) == 1
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_reembed_empty_returns_zero(tmp_path: Path) -> None:
+    engine = make_engine(f"sqlite+aiosqlite:///{tmp_path / 're3.db'}", load_vec=True)
+    await init_db(engine)
+    embedder = FakeEmbeddingProvider(dim=DIM)
+    await init_memory_tables(engine, DIM, embedder.name)
+    backend = SQLiteMemoryBackend(engine, embedder)
+    assert await backend.reembed(embedder) == 0
+    assert await stored_embedding_model(engine) == "fake"
     await engine.dispose()
 
 

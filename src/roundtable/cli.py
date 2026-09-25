@@ -153,6 +153,24 @@ def _export(args: argparse.Namespace) -> int:
     return 0
 
 
+async def _reembed(args: argparse.Namespace) -> int:
+    settings = get_settings()
+    engine = make_engine(load_vec=True)
+    await init_db(engine)
+    embedder = build_embedding_provider(
+        backend=settings.embedding_backend,
+        model=settings.embedding_model,
+        dim=settings.embedding_dim,
+    )
+    backend = SQLiteMemoryBackend(engine, embedder)
+    try:
+        count = await backend.reembed(embedder)
+    finally:
+        await dispose(engine)
+    print(f"re-embedded {count} memory item(s) with {embedder.name} (dim={embedder.dim})")
+    return 0
+
+
 def _serve(args: argparse.Namespace) -> int:
     import uvicorn
     settings = get_settings()
@@ -193,7 +211,10 @@ def main(argv: list[str] | None = None) -> int:
     export_p.add_argument("session", help="Session id (UUID) to export.")
     export_p.add_argument("--format", choices=["jsonl", "csv"], default="jsonl", help="Output format (default jsonl).")
     export_p.add_argument("--out", default=None, help="Write to this file instead of stdout.")
-    sub.add_parser("reembed", help="Recompute embeddings after a model change (available in M3).")
+    sub.add_parser(
+        "reembed",
+        help="Recompute memory embeddings after a model change (DESIGN.md §11, M3).",
+    )
 
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO if not getattr(args, "quiet", False) else logging.WARNING, stream=sys.stderr)
@@ -204,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
         return _serve(args)
     if args.command == "export":
         return _export(args)
+    if args.command == "reembed":
+        return asyncio.run(_reembed(args))
     print(f"`roundtable {args.command}` is available in a later milestone (see DESIGN.md §18).")
     return 0
 

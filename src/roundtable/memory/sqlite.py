@@ -134,6 +134,57 @@ class SQLiteMemoryBackend(MemoryBackend):
             )
         return hits
 
+    async def reembed(self, embedder: EmbeddingProvider) -> int:
+        """Re-embed every stored item with ``embedder`` (DESIGN.md §11, M3).
+
+        Re-vectors all ``memory_items`` with the new provider and repairs any
+        missing FTS rows. If the provider's dimension differs from the one the
+        vector table was created for, the vector table is rebuilt. ``app_meta``
+        is updated to record the new producing model and dimension. Returns the
+        number of items re-embedded (0 when there is no memory).
+        """
+        new_dim = embedder.dim
+        async with self._engine.begin() as conn:
+            stored_dim = (
+                await conn.exec_driver_sql("SELECT value FROM app_meta WHERE key = 'embedding_dim'")
+            ).first()
+            if stored_dim is not None and int(stored_dim[0]) != new_dim:
+                await conn.exec_driver_sql("DROP TABLE IF EXISTS memory_vec;")
+            await conn.exec_driver_sql(
+                f"CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(embedding float[{new_dim}]);"
+            )
+            rows = (await conn.exec_driver_sql("SELECT id, content FROM memory_items")).all()
+            have_fts = {int(r[0]) for r in (await conn.exec_driver_sql("SELECT rowid FROM memory_fts")).all()}
+
+        items = [(int(item_id), content) for item_id, content in rows]
+        batch = 64
+        for start in range(0, len(items), batch):
+            chunk = items[start : start + batch]
+            vectors = await embedder.embed([content for _item_id, content in chunk])
+            async with self._engine.begin() as conn:
+                for (item_id, content), vector in zip(chunk, vectors, strict=True):
+                    await conn.exec_driver_sql("DELETE FROM memory_vec WHERE rowid = :id;", {"id": item_id})
+                    await conn.exec_driver_sql(
+                        "INSERT INTO memory_vec(rowid, embedding) VALUES(:id, :vec);",
+                        {"id": item_id, "vec": _pack_vector(vector)},
+                    )
+                    if item_id not in have_fts:
+                        await conn.exec_driver_sql(
+                            "INSERT INTO memory_fts(rowid, content) VALUES(:id, :content);",
+                            {"id": item_id, "content": content},
+                        )
+                await conn.exec_driver_sql(
+                    "INSERT INTO app_meta(key, value) VALUES('embedding_dim', :v) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
+                    {"v": str(new_dim)},
+                )
+                await conn.exec_driver_sql(
+                    "INSERT INTO app_meta(key, value) VALUES('embedding_model', :v) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
+                    {"v": embedder.name},
+                )
+        return len(items)
+
     # -- internals -----------------------------------------------------------
     async def _candidate_ids(
         self,

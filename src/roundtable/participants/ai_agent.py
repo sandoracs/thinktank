@@ -36,6 +36,7 @@ from roundtable.llm.client import ChatMessage, LLMClient, LLMResult, Purpose
 from roundtable.memory.base import MemoryBackend
 from roundtable.memory.distill import episodic_messages, has_lesson, long_term_messages
 from roundtable.participants.base import TurnContext
+from roundtable.persona.consistency import ConsistencyJudgment, consistency_messages
 from roundtable.persona.prompts import reflection_messages
 from roundtable.persona.reflection import ReflectionResult
 
@@ -97,21 +98,92 @@ class AIAgent:
             duration_ms=result.duration_ms,
             agent_id=self.id,
         )
-        # Consistency check (DESIGN.md §12.1) is opt-in and lands in M6.
+        content = result.content
+        input_tokens = result.input_tokens
+        output_tokens = result.output_tokens
+        cost_usd = result.cost_usd
+
+        if self._config.consistency_check:
+            content, extra_in, extra_out, extra_cost = await self._consistency_check(result.content)
+            input_tokens += extra_in
+            output_tokens += extra_out
+            cost_usd += extra_cost
+
         return Message(
             id=new_message_id(),
             session_id=ctx.session_id,
             seq=0,  # stamped with the event seq during projection
             speaker_id=self.id,
             kind="speech",
-            content=result.content,
+            content=content,
             meta={
                 "model": result.model,
-                "tokens_in": result.input_tokens,
-                "tokens_out": result.output_tokens,
-                "cost_usd": result.cost_usd,
+                "tokens_in": input_tokens,
+                "tokens_out": output_tokens,
+                "cost_usd": cost_usd,
             },
         )
+
+    async def _consistency_check(self, candidate: str) -> tuple[str, int, int, float]:
+        """Optional persona-consistency pass (DESIGN.md §12.1, M6).
+
+        The judge scores the candidate against the frozen core (1-5). Below the
+        threshold the speech is regenerated once with the judge's feedback. A
+        ``ConsistencyViolation`` event is emitted either way. Returns the final
+        content plus the extra tokens/cost incurred by the pass.
+        """
+        threshold = self._config.consistency_threshold
+        judge = await self._complete(
+            purpose="judge",
+            messages=consistency_messages(core=self._config.persona, candidate=candidate),
+            response_model=ConsistencyJudgment,
+        )
+        if judge is None or judge.parsed is None:
+            # Judge unavailable (model error / unparseable) — keep the candidate.
+            return candidate, 0, 0, 0.0
+        judgment = judge.parsed
+        assert isinstance(judgment, ConsistencyJudgment)
+
+        extra_in = extra_out = 0
+        extra_cost = 0.0
+        content = candidate
+        regenerated = False
+        if judgment.score < threshold:
+            regen = await self._llm.complete(
+                model=self._config.model,
+                messages=consistency_messages(
+                    core=self._config.persona,
+                    candidate=candidate,
+                    feedback=judgment.justification,
+                ),
+                purpose="speech",
+                temperature=self._config.temperature,
+                max_tokens=self._config.max_tokens,
+            )
+            await self._emit(
+                EventType.LLM_CALL_COMPLETED,
+                model=regen.model,
+                purpose="speech",
+                input_tokens=regen.input_tokens,
+                output_tokens=regen.output_tokens,
+                cost_usd=regen.cost_usd,
+                duration_ms=regen.duration_ms,
+                agent_id=self.id,
+            )
+            content = regen.content
+            extra_in = regen.input_tokens
+            extra_out = regen.output_tokens
+            extra_cost = regen.cost_usd
+            regenerated = True
+
+        await self._emit(
+            EventType.CONSISTENCY_VIOLATION,
+            agent_id=self.id,
+            score=judgment.score,
+            justification=judgment.justification,
+            regenerated=regenerated,
+        )
+        return content, extra_in, extra_out, extra_cost
 
     @property
     def drift(self) -> DriftConfig:

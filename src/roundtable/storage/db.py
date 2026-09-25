@@ -117,16 +117,20 @@ async def _meta(conn: Any, key: str) -> str | None:
 
 
 async def init_memory_tables(engine: AsyncEngine, dim: int, model: str | None = None) -> None:
-    """Create the memory vector/FTS virtual tables for ``dim``-dimensional vectors.
+    """Create the memory vector virtual table for ``dim``-dimensional vectors.
 
     The dimension is persisted in ``app_meta``. If the configured dimension
-    changes, the old vectors and FTS index are dropped and rebuilt, and the
-    (now orphaned) memory items are cleared — re-embedding after a model swap
-    is a fresh start. Idempotent when the dimension is unchanged.
+    changes, the old vectors are dropped and rebuilt and the (now orphaned)
+    memory items are cleared — a dimension change is a fresh start. When the
+    dimension is unchanged the existing vectors are kept, and
+    ``embedding_model`` (the model that produced the current vectors) is only
+    recorded when the tables are (re)created, so a later same-dimension model
+    swap stays detectable for :func:`reembed` / the hub's startup check.
     """
     async with engine.begin() as conn:
         stored = await _meta(conn, "embedding_dim")
-        if stored is not None and int(stored) != dim:
+        dim_changed = stored is not None and int(stored) != dim
+        if dim_changed:
             await conn.exec_driver_sql("DROP TABLE IF EXISTS memory_fts;")
             await conn.exec_driver_sql("DROP TABLE IF EXISTS memory_vec;")
             await conn.exec_driver_sql("DELETE FROM memory_items;")
@@ -137,15 +141,28 @@ async def init_memory_tables(engine: AsyncEngine, dim: int, model: str | None = 
         await conn.exec_driver_sql(
             f"CREATE VIRTUAL TABLE IF NOT EXISTS memory_vec USING vec0(embedding float[{dim}]);"
         )
-        pairs = [("embedding_dim", str(dim))]
-        if model:
-            pairs.append(("embedding_model", model))
-        for key, value in pairs:
+        await conn.exec_driver_sql(
+            "INSERT INTO app_meta(key, value) VALUES('embedding_dim', :v) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
+            {"v": str(dim)},
+        )
+        if model is not None and (stored is None or dim_changed):
             await conn.exec_driver_sql(
-                "INSERT INTO app_meta(key, value) VALUES(:k, :v) "
+                "INSERT INTO app_meta(key, value) VALUES('embedding_model', :v) "
                 "ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
-                {"k": key, "v": value},
+                {"v": model},
             )
+
+
+async def stored_embedding_model(engine: AsyncEngine) -> str | None:
+    """Return the model that produced the current memory vectors, if recorded.
+
+    ``None`` when the memory layer has not been initialised. Compare against
+    the configured provider's name to detect a model swap that needs
+    ``roundtable reembed``.
+    """
+    async with engine.connect() as conn:
+        return await _meta(conn, "embedding_model")
 
 
 def make_session_factory(engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:

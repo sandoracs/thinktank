@@ -7,9 +7,9 @@ machine, SQLite. Full specification in [`DESIGN.md`](DESIGN.md) (Hungarian).
 
 ## Status
 
-Milestones **M0–M6** are implemented and tested (54 tests, ruff + pyright
-strict clean). M7 (remote agents, token streaming, tool-using agents) is
-optional and not started.
+Milestones **M0–M6** plus the **RemoteAgent** (M7) and the **M3 `reembed`**
+command are implemented and tested (76 tests, ruff + pyright strict clean).
+Token streaming and tool-using agents (remaining M7 scope) are not started.
 
 | Milestone | Scope | Status |
 |---|---|---|
@@ -19,7 +19,8 @@ optional and not started.
 | M3 | memory: episodic/long-term, sqlite-vec + FTS5 + RRF, `EmbeddingProvider` | done |
 | M4 | persona core/state, reflection, LOCKED/BOUNDED/SHADOW, inspector timeline | done |
 | M5 | plugin registry (entry points), schema-driven forms, `HandRaisePriority`, `Bidding` | done |
-| M6 | APPROVED mode + approval panel, JSONL/CSV export, replay view | done |
+| M6 | APPROVED mode + approval panel, JSONL/CSV export, replay view, consistency check, agent library CRUD | done |
+| M7 | RemoteAgent (external HTTP participant); token streaming + tool agents remain | remote agent done |
 
 ## Install
 
@@ -32,7 +33,7 @@ uv sync            # installs Python 3.12 + all deps into .venv
 ## Verify
 
 ```sh
-uv run pytest -q                 # 54 tests
+uv run pytest -q                 # 76 tests
 uv run ruff check src tests      # lint
 uv run --with pyright pyright    # strict type-check (0 errors)
 ```
@@ -69,6 +70,47 @@ panel.
   - `GET  /api/sessions/{id}/approvals`
   - `POST /api/sessions/{id}/approvals/{agent}`  body `{"decision": "approve"|"reject"}`
 - **Replay** — step a finished session event-by-event: `GET /sessions/{id}/replay`
+
+## Remote agents (M7)
+
+An external service can join the table over a fixed HTTP protocol. Point a
+`ParticipantRef(remote=...)` seat at a base URL; the engine posts the context
+and takes the reply as the message:
+
+```
+POST {url}/speak         -> {"content": "..."}
+POST {url}/observe       -> {}
+POST {url}/session_end   -> {}
+```
+
+A failing `speak` is recorded as an `Error` + `TurnSkipped` (the debate
+continues); `observe`/`session_end` are best-effort. See
+`tests/integration/test_remote_session.py` for the mock-server test.
+
+## Re-embedding (M3)
+
+When the configured embedding model changes, the hub signals it at startup
+("run `roundtable reembed`"). The command recomputes every stored vector
+(rebuilding the vector table if the dimension changed) and records the new
+model:
+
+```sh
+uv run roundtable reembed
+```
+
+## Consistency check (M6, opt-in)
+
+Per-agent (`consistency_check: true`): a judge model scores the candidate
+speech against the frozen persona core (1-5). Below `consistency_threshold`
+the speech is regenerated once with the judge's feedback. Either way a
+`ConsistencyViolation` event is recorded (shown in the agent inspector). Off
+by default because it is an extra model call.
+
+## Agent library CRUD
+
+Create, update, and delete agent templates:
+- Form: `GET /agents/new` → `POST /agents`
+- API: `POST /api/agents`, `PUT /api/agents/{id}`, `DELETE /api/agents/{id}`
 
 ## Configuration
 

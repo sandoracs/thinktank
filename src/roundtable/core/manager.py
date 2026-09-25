@@ -13,17 +13,20 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import httpx
+
 from roundtable.core.bus import EventBus
 from roundtable.core.context import ContextBuilder, ParticipantInfo
 from roundtable.core.engine import SessionEngine
 from roundtable.core.state import SessionState, project
 from roundtable.domain.events import EventType, make_event
-from roundtable.domain.models import AgentConfig, SessionConfig
+from roundtable.domain.models import AgentConfig, RemoteConfig, SessionConfig
 from roundtable.llm.client import LLMClient
 from roundtable.memory.base import MemoryBackend
 from roundtable.participants.ai_agent import AIAgent
 from roundtable.participants.base import Participant
 from roundtable.participants.human import HumanParticipant
+from roundtable.participants.remote import RemoteAgent
 from roundtable.plugins.registry import build_strategy
 from roundtable.storage.repositories import EventStore
 from roundtable.strategies.base import TurnStrategy
@@ -39,6 +42,7 @@ class SessionManager:
         context_builder: ContextBuilder | None = None,
         default_model: str = "claude-3-5-sonnet-latest",
         human_timeout_s: float = 60.0,
+        remote_client: httpx.AsyncClient | None = None,
     ) -> None:
         self._store = store
         self._bus = EventBus(append=store.append)
@@ -47,6 +51,7 @@ class SessionManager:
         self._context_builder = context_builder or ContextBuilder()
         self._default_model = default_model
         self._human_timeout_s = human_timeout_s
+        self._remote_client = remote_client
         self._engines: dict[uuid.UUID, SessionEngine] = {}
 
     @property
@@ -63,6 +68,7 @@ class SessionManager:
         self,
         config: SessionConfig,
         agents: dict[str, AgentConfig],
+        remotes: dict[str, RemoteConfig] | None = None,
     ) -> SessionEngine:
         session_id = uuid.uuid4()
         await self._store.create_session(session_id, config)
@@ -81,7 +87,7 @@ class SessionManager:
             bus=self._bus,
             store=self._store,
         )
-        participants = self._build_participants(config, state, engine.emit, agents)
+        participants = self._build_participants(config, state, engine.emit, agents, remotes)
         engine.bind_participants(participants)
         await strategy.on_event(created)
 
@@ -94,6 +100,7 @@ class SessionManager:
         state: SessionState,
         emit: Any,
         agents: dict[str, AgentConfig],
+        remotes: dict[str, RemoteConfig] | None = None,
     ) -> dict[str, Participant]:
         infos: list[ParticipantInfo] = []
         for ref in config.participants:
@@ -102,6 +109,10 @@ class SessionManager:
                 cfg = agents.get(pid)
                 name = cfg.persona.name if cfg else pid
                 role = cfg.persona.role if cfg else ""
+            elif ref.participant_kind == "remote":
+                rcfg = remotes.get(pid) if remotes is not None else None
+                name = rcfg.display_name if rcfg is not None and rcfg.display_name else pid
+                role = ""
             else:
                 name, role = pid, ""
             infos.append(ParticipantInfo(id=pid, name=name, description=role))
@@ -132,8 +143,11 @@ class SessionManager:
                     is_moderator=(config.moderator == pid),
                 )
             else:
-                msg = f"RemoteAgent participant {pid!r} is not available until M5"
-                raise NotImplementedError(msg)
+                rcfg = remotes.get(pid) if remotes is not None else None
+                if rcfg is None:
+                    msg = f"Remote participant {pid!r} referenced but not provided"
+                    raise ValueError(msg)
+                participants[pid] = RemoteAgent(rcfg, client=self._remote_client)
         return participants
 
     # -- control -----------------------------------------------------------
@@ -157,9 +171,7 @@ class SessionManager:
         engine.stop(reason)
 
     # -- approvals (DESIGN.md §12.3, M6) ----------------------------------
-    async def list_approvals(
-        self, session_id: uuid.UUID, agent_id: str | None = None
-    ) -> list[dict[str, object]]:
+    async def list_approvals(self, session_id: uuid.UUID, agent_id: str | None = None) -> list[dict[str, object]]:
         return await self._store.list_approvals(session_id, agent_id=agent_id)
 
     async def decide_approval(self, session_id: uuid.UUID, agent_id: str, decision: str) -> bool:

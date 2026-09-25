@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Agent-könyvtár</h1>
+<p class="actions"><a class="btn btn-primary" href="/agents/new">Új agent</a></p>
 <div class="cards">
   {% for a in agents %}
   <div class="card">

@@ -45,6 +45,96 @@ def test_agent_library_seeded(client: TestClient) -> None:
     assert by_id["ai_moderator"]["drift_mode"] == "locked"
 
 
+def _new_agent_body(agent_id: str = "cautious_statistician") -> dict[str, object]:
+    return {
+        "id": agent_id,
+        "model": "anthropic/claude-3-5-sonnet",
+        "temperature": 0.5,
+        "persona": {
+            "name": "Dr. Stat",
+            "role": "cautious statistician",
+            "expertise": ["statistics"],
+            "values": ["rigor"],
+            "boundaries": ["no medical advice"],
+        },
+        "drift": {"mode": "bounded"},
+        "consistency_check": True,
+        "consistency_threshold": 4,
+    }
+
+
+def test_agent_crud_api(client: TestClient) -> None:
+    # create
+    created = client.post("/api/agents", json=_new_agent_body())
+    assert created.status_code == 201
+    assert created.json()["id"] == "cautious_statistician"
+    assert created.json()["drift_mode"] == "bounded"
+
+    # listed
+    ids = {a["id"] for a in client.get("/api/agents").json()}
+    assert "cautious_statistician" in ids
+
+    # update
+    body = _new_agent_body()
+    body["temperature"] = 0.9
+    body["persona"]["role"] = "extra-cautious statistician"
+    updated = client.put("/api/agents/cautious_statistician", json=body)
+    assert updated.status_code == 200
+    listing = {a["id"]: a for a in client.get("/api/agents").json()}
+    assert listing["cautious_statistician"]["temperature"] == 0.9
+    assert listing["cautious_statistician"]["persona"]["role"] == "extra-cautious statistician"
+
+    # delete
+    deleted = client.delete("/api/agents/cautious_statistician")
+    assert deleted.status_code == 204
+    ids = {a["id"] for a in client.get("/api/agents").json()}
+    assert "cautious_statistician" not in ids
+
+
+def test_agent_create_conflict_and_errors(client: TestClient) -> None:
+    assert client.post("/api/agents", json=_new_agent_body()).status_code == 201
+    # duplicate id -> 409
+    assert client.post("/api/agents", json=_new_agent_body()).status_code == 409
+    # invalid payload -> 400
+    bad = client.post("/api/agents", json={"id": "x", "persona": {}})
+    assert bad.status_code == 400
+    # update unknown -> 404
+    body = _new_agent_body("ghost")
+    assert client.put("/api/agents/ghost", json=body).status_code == 404
+    # delete unknown -> 404
+    assert client.delete("/api/agents/ghost").status_code == 404
+
+
+def test_agent_form_creates_template(client: TestClient) -> None:
+    form = {
+        "id": "form_agent",
+        "model": "anthropic/claude-3-5-sonnet",
+        "temperature": "0.6",
+        "persona_name": "Form Person",
+        "persona_role": "form-built",
+        "expertise": "a, b",
+        "values": "care",
+        "boundaries": "no harm",
+        "drift_mode": "free",
+        "consistency_check": "on",
+        "consistency_threshold": "3",
+    }
+    response = client.post("/agents", data=form, follow_redirects=False)
+    assert response.status_code == 303
+    listing = {a["id"]: a for a in client.get("/api/agents").json()}
+    assert "form_agent" in listing
+    assert listing["form_agent"]["drift_mode"] == "free"
+    assert listing["form_agent"]["persona"]["name"] == "Form Person"
+    assert listing["form_agent"]["persona"]["expertise"] == ["a", "b"]
+
+
+def test_agent_form_page_renders(client: TestClient) -> None:
+    page = client.get("/agents/new")
+    assert page.status_code == 200
+    assert "Új agent" in page.text
+    assert "drift_mode" in page.text
+
+
 def test_plugins_lists_builtin_strategies(client: TestClient) -> None:
     plugins = client.get("/api/plugins").json()
     names = {s["name"] for s in plugins["turn_strategies"]}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Új agent</h1>
+<form method="post" action="/agents" class="builder">
+  <div class="row">
+    <label>ID (azonosító)
+      <input name="id" required placeholder="pl. cautious_statistician">
+    </label>
+    <label>Modell
+      <input name="model" placeholder="pl. anthropic/claude-3-5-sonnet">
+    </label>
+    <label>Hőfokozat (0-2)
+      <input name="temperature" type="number" min="0" max="2" step="0.1" value="0.7" class="narrow">
+    </label>
+  </div>
+
+  <fieldset>
+    <legend>Perszóna-mag</legend>
+    <div class="row">
+      <label>Név
+        <input name="persona_name" placeholder="pl. Dr. Kovács Anna">
+      </label>
+      <label>Szerep
+        <input name="persona_role" placeholder="pl. óvatos statisztikus">
+      </label>
+    </div>
+    <label>Szakértelem (vesszővel elválasztva)
+      <input name="expertise" placeholder="pl. statisztika, okfelezés">
+    </label>
+    <label>Értékek (vesszővel elválasztva)
+      <input name="values" placeholder="pl. pontoság, átláthatóság">
+    </label>
+    <label>Korlátok (vesszővel elválasztva)
+      <input name="boundaries" placeholder="pl. nem ad orvosi tanácsot">
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Drift és konzisztencia</legend>
+    <div class="row">
+      <label>Drift mód
+        <select name="drift_mode">
+          <option value="locked" selected>locked</option>
+          <option value="bounded">bounded</option>
+          <option value="approved">approved</option>
+          <option value="free">free</option>
+        </select>
+      </label>
+      <label>Konzisztencia-ellenőrzés
+        <select name="consistency_check">
+          <option value="" selected>ki</option>
+          <option value="on">be</option>
+        </select>
+      </label>
+      <label>Küszöb (1-5)
+        <input name="consistency_threshold" type="number" min="1" max="5" value="3" class="narrow">
+      </label>
+    </div>
+  </fieldset>
+
+  <p class="actions">
+    <button type="submit" class="btn btn-primary">Agent mentése</button>
+    <a class="btn" href="/agents">Mégse</a>
+  </p>
+</form>
+{% endblock %}

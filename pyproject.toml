@@ -27,6 +27,8 @@ dependencies = [
     "python-dotenv>=1.0",
     # config / template loading
     "pyyaml>=6.0",
+    # remote agents (M7)
+    "httpx>=0.27",
 ]
 
 [project.optional-dependencies]
@@ -47,6 +49,7 @@ bidding = "roundtable.strategies.bidding:Bidding"
 
 [project.entry-points."roundtable.participants"]
 llm = "roundtable.participants.ai_agent:AIAgent"
+remote = "roundtable.participants.remote:RemoteAgent"
 
 [project.entry-points."roundtable.drift_policies"]
 locked = "roundtable.persona.policies:LockedPolicy"

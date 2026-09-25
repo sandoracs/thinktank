@@ -151,6 +151,13 @@ class ErrorPayload(_Payload):
     message: str
 
 
+class ConsistencyViolationPayload(_Payload):
+    agent_id: str
+    score: int  # judge's 1-5 persona-consistency score
+    justification: str
+    regenerated: bool = False
+
+
 PAYLOAD_MODELS: dict[EventType, type[_Payload]] = {
     EventType.SESSION_CREATED: SessionCreatedPayload,
     EventType.SESSION_STARTED: _NoPayload,
@@ -173,6 +180,7 @@ PAYLOAD_MODELS: dict[EventType, type[_Payload]] = {
     EventType.PERSONA_UPDATE_REJECTED: PersonaUpdateRejectedPayload,
     EventType.PARTICIPANT_DISABLED: ParticipantDisabledPayload,
     EventType.ERROR: ErrorPayload,
+    EventType.CONSISTENCY_VIOLATION: ConsistencyViolationPayload,
 }
 
 # Events with a payload not yet given a dedicated schema in M0/M1 (M3-M6); they
@@ -180,7 +188,6 @@ PAYLOAD_MODELS: dict[EventType, type[_Payload]] = {
 OPEN_PAYLOAD: tuple[EventType, ...] = (
     EventType.APPROVAL_REQUESTED,
     EventType.APPROVAL_DECIDED,
-    EventType.CONSISTENCY_VIOLATION,
 )
 
 

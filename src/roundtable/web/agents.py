@@ -62,6 +62,42 @@ async def resolve_agents(
     return agents
 
 
+async def create_template(
+    factory: async_sessionmaker[AsyncSession], config: AgentConfig
+) -> AgentConfig:
+    """Insert a new agent template; raise if the id already exists."""
+    async with factory() as db, db.begin():
+        if await db.get(AgentTemplate, config.id) is not None:
+            msg = f"Agent template {config.id!r} already exists"
+            raise ValueError(msg)
+        db.add(AgentTemplate(id=config.id, config=config.model_dump(mode="json")))
+    return config
+
+
+async def update_template(
+    factory: async_sessionmaker[AsyncSession], config: AgentConfig
+) -> AgentConfig | None:
+    """Replace an existing template's config; return None if it does not exist."""
+    async with factory() as db, db.begin():
+        row = await db.get(AgentTemplate, config.id)
+        if row is None:
+            return None
+        row.config = config.model_dump(mode="json")
+    return config
+
+
+async def delete_template(
+    factory: async_sessionmaker[AsyncSession], agent_id: str
+) -> bool:
+    """Delete a template; return whether a row was removed."""
+    async with factory() as db, db.begin():
+        row = await db.get(AgentTemplate, agent_id)
+        if row is None:
+            return False
+        await db.delete(row)
+    return True
+
+
 def template_summary(config: AgentConfig) -> dict[str, object]:
     """JSON-safe view for the agent library (DESIGN.md §15)."""
     persona = config.persona

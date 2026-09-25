@@ -13,6 +13,7 @@ database.
 from __future__ import annotations
 
 import json
+import logging
 import uuid
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
@@ -30,13 +31,25 @@ from roundtable.config import Settings, get_settings
 from roundtable.core.manager import SessionManager
 from roundtable.core.state import SessionState, apply_event
 from roundtable.domain.events import Event, EventType
-from roundtable.domain.models import SessionConfig
+from roundtable.domain.models import (
+    AgentConfig,
+    DriftMode,
+    PersonaCore,
+    SessionConfig,
+)
 from roundtable.llm.client import LLMClient
 from roundtable.memory.base import MemoryBackend
 from roundtable.memory.embeddings import EmbeddingProvider, build_embedding_provider
 from roundtable.memory.sqlite import SQLiteMemoryBackend
 from roundtable.plugins.registry import load_strategies
-from roundtable.storage.db import dispose, init_db, init_memory_tables, make_engine, make_session_factory
+from roundtable.storage.db import (
+    dispose,
+    init_db,
+    init_memory_tables,
+    make_engine,
+    make_session_factory,
+    stored_embedding_model,
+)
 from roundtable.storage.repositories import EventStore
 from roundtable.web import agents as agent_repo
 from roundtable.web.hub import HubSession, WebHub
@@ -45,6 +58,7 @@ from roundtable.web.render import sidebar_fragment, transcript_fragment
 _WEB = Path(__file__).parent
 _TEMPLATES = _WEB / "templates"
 
+logger = logging.getLogger(__name__)
 
 def _deps(request: Request | WebSocket) -> dict[str, Any]:
     """Shared dependencies stored on ``app.state``."""
@@ -69,6 +83,20 @@ def _page(template: str, context: dict[str, Any]) -> HTMLResponse:
     )
     html = env.get_template(template).render(**context, title=context.get("title", "Roundtable"))
     return HTMLResponse(html)
+
+
+def embedding_mismatch_message(stored: str | None, configured: str) -> str | None:
+    """Warn when stored memory vectors predate the configured embedding model.
+
+    ``None`` means no mismatch (nothing stored yet, or the model already matches).
+    """
+    if stored is None or stored == configured:
+        return None
+    return (
+        f"embedding model mismatch: stored memory vectors use {stored!r} but the configured "
+        f"provider is {configured!r}. Retrieval quality may be degraded; run "
+        f"`roundtable reembed` to recompute the vectors."
+    )
 
 
 def _default_llm(settings: Settings) -> LLMClient:
@@ -156,6 +184,51 @@ def _config_from_form(form: FormData) -> SessionConfig:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+def _agent_from_form(form: FormData) -> AgentConfig:
+    """Build an AgentConfig from the library form (DESIGN.md §15)."""
+
+    def _csv(key: str) -> list[str]:
+        return [part.strip() for part in str(form.get(key) or "").split(",") if part.strip()]
+
+    agent_id = str(form.get("id") or "").strip()
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="id is required")
+    drift_mode = str(form.get("drift_mode") or "locked").strip()
+    try:
+        mode = DriftMode(drift_mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=f"unknown drift mode {drift_mode!r}") from exc
+    try:
+        temperature = float(str(form.get("temperature") or "0.8").strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="temperature must be a number") from exc
+    try:
+        threshold = int(str(form.get("consistency_threshold") or "3").strip())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="consistency_threshold must be an integer") from exc
+
+    persona = PersonaCore(
+        name=str(form.get("persona_name") or agent_id).strip() or agent_id,
+        role=str(form.get("persona_role") or "").strip(),
+        expertise=_csv("expertise"),
+        values=_csv("values"),
+        boundaries=_csv("boundaries"),
+    )
+    raw: dict[str, Any] = {
+        "id": agent_id,
+        "model": str(form.get("model") or "").strip() or "claude-3-5-sonnet-latest",
+        "temperature": temperature,
+        "persona": persona,
+        "drift": {"mode": mode},
+        "consistency_check": (form.get("consistency_check") or "") == "on",
+        "consistency_threshold": threshold,
+    }
+    try:
+        return AgentConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 async def _inspector_data(
     deps: dict[str, Any], sid: uuid.UUID, agent_id: str
 ) -> dict[str, Any]:
@@ -174,6 +247,7 @@ async def _inspector_data(
         EventType.PERSONA_UPDATED,
         EventType.PERSONA_UPDATE_CLAMPED,
         EventType.PERSONA_UPDATE_REJECTED,
+        EventType.CONSISTENCY_VIOLATION,
     }
     events = await store.get_events(sid, types=persona_types)
     persona_events = [e for e in events if e.payload.get("agent_id") == agent_id]
@@ -220,6 +294,10 @@ def create_app(
             dim=resolved_settings.embedding_dim,
         )
         await init_memory_tables(engine, resolved_embedder.dim, resolved_embedder.name)
+        stored_model = await stored_embedding_model(engine)
+        mismatch = embedding_mismatch_message(stored_model, resolved_embedder.name)
+        if mismatch is not None:
+            logger.warning(mismatch)
         resolved_memory = memory or SQLiteMemoryBackend(engine, resolved_embedder)
         factory = make_session_factory(engine)
         store = EventStore(factory)
@@ -280,6 +358,26 @@ def create_app(
             "pages/agents.html",
             {"agents": [agent_repo.template_summary(c) for c in templates], "active": "agents"},
         )
+
+    @app.get("/agents/new", response_class=HTMLResponse)
+    async def agent_form(request: Request) -> HTMLResponse:
+        return _page("pages/agents_new.html", {"active": "agents"})
+
+    @app.post("/agents")
+    async def agent_create_from_form(request: Request) -> RedirectResponse:
+        form = await request.form()
+        try:
+            config = _agent_from_form(form)
+        except HTTPException:
+            raise
+        except (ValueError, ValidationError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        factory = _deps(request)["factory"]
+        try:
+            await agent_repo.create_template(factory, config)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return RedirectResponse("/agents", status_code=303)
 
     @app.get("/sessions/new", response_class=HTMLResponse)
     async def builder(request: Request) -> HTMLResponse:
@@ -530,6 +628,42 @@ def create_app(
     async def api_agents(request: Request) -> list[dict[str, Any]]:
         templates = await agent_repo.list_templates(_deps(request)["factory"])
         return [agent_repo.template_summary(c) for c in templates]
+
+    @app.post("/api/agents", status_code=201)
+    async def api_create_agent(request: Request) -> dict[str, Any]:
+        factory = _deps(request)["factory"]
+        try:
+            body = await request.json()
+            config = AgentConfig.model_validate(body)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        try:
+            await agent_repo.create_template(factory, config)
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return agent_repo.template_summary(config)
+
+    @app.put("/api/agents/{agent_id}")
+    async def api_update_agent(request: Request, agent_id: str) -> dict[str, Any]:
+        factory = _deps(request)["factory"]
+        try:
+            body = await request.json()
+            config = AgentConfig.model_validate(body)
+        except ValidationError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        if config.id != agent_id:
+            raise HTTPException(status_code=400, detail="id in path and body must match")
+        updated = await agent_repo.update_template(factory, config)
+        if updated is None:
+            raise HTTPException(status_code=404, detail=f"Agent {agent_id!r} not found")
+        return agent_repo.template_summary(updated)
+
+    @app.delete("/api/agents/{agent_id}", status_code=204)
+    async def api_delete_agent(request: Request, agent_id: str) -> Response:
+        factory = _deps(request)["factory"]
+        if not await agent_repo.delete_template(factory, agent_id):
+            raise HTTPException(status_code=404, detail=f"Agent {agent_id!r} not found")
+        return Response(status_code=204)
 
     @app.get("/api/plugins")
     async def api_plugins() -> dict[str, Any]:

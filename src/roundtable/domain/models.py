@@ -157,12 +157,32 @@ class AgentConfig(BaseModel):
     drift: DriftConfig = Field(default_factory=DriftConfig)
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     consistency_check: bool = False
+    consistency_threshold: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description="Judge score (1-5) below which the speech is regenerated once.",
+    )
     carry_over_state: bool = False
 
     def with_defaults(self, default_model: str) -> AgentConfig:
         if self.model:
             return self
         return self.model_copy(update={"model": default_model})
+
+
+class RemoteConfig(BaseModel):
+    """Configuration for one remote participant (DESIGN.md §8.1, M7).
+
+    A remote agent is an external service the table talks to over HTTP: the
+    context is POSTed to ``{url}/speak`` and the reply becomes the message.
+    """
+
+    id: str
+    url: str
+    display_name: str = ""
+    timeout_s: float = Field(default=30.0, gt=0.0)
+    headers: dict[str, str] = Field(default_factory=dict)
 
 
 class DebateQuestion(BaseModel):

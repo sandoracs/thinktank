@@ -58,6 +58,10 @@ class Settings(BaseSettings):
         ge=8,
         description="Embedding vector dimension; must match the provider's output size.",
     )
+    fake_llm: bool = Field(
+        default=False,
+        description="If true, use the offline FakeLLM instead of LiteLLM (``ROUNDTABLE_FAKE_LLM=1``).",
+    )
     # --- logging ---
     log_level: str = Field(default="INFO", description="structlog level name (DEBUG, INFO, ...).")
     log_json: bool = Field(default=True, description="Emit JSON logs instead of pretty console logs.")

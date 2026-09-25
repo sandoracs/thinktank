@@ -29,20 +29,7 @@ from roundtable.storage.repositories import EventStore
 
 logger = logging.getLogger("roundtable")
 
-_FAKE_TURNS = [
-    "I think we should start from the premise that the question is real, not hypothetical.",
-    "With respect, that assumes the evidence is as strong as it looks.",
-    "Could you give one concrete example where that has actually held up?",
-    "I largely agree, though I'd push back on the strength of the causal claim.",
-    "That's a fair point; let me steelman the other side before responding.",
-    "Here is where I diverge: the incentives, not the intentions, are what matter.",
-    "I'm not convinced that resolves the disclosure question you raised earlier.",
-    "If we accept that, then the practical standard becomes much simpler.",
-    "Let me be specific about the risk I see in your framing.",
-    "That's the strongest version of the argument so far, but it leaves a gap.",
-    "I'd like to concede one point before restating my core position.",
-    "To summarise where we land: we agree on the goal but disagree on the rule.",
-]
+
 
 
 def _load_session(path: Path) -> tuple[SessionConfig, dict[str, AgentConfig]]:
@@ -58,11 +45,10 @@ def _load_session(path: Path) -> tuple[SessionConfig, dict[str, AgentConfig]]:
 
 def _build_llm(fake: bool) -> LLMClient:
     if fake:
-        from roundtable.llm.fake import FakeLLM
+        from roundtable.llm.fake import FakeLLM, sample_responses
 
         # A generous pool so a multi-round fake run does not repeat immediately.
-        responses = (_FAKE_TURNS * 6)[: 60]
-        return FakeLLM(responses=responses)
+        return FakeLLM(responses=sample_responses(60))
     from roundtable.llm.litellm_client import LiteLLMClient
 
     return LiteLLMClient()
@@ -172,7 +158,12 @@ async def _reembed(args: argparse.Namespace) -> int:
 
 
 def _serve(args: argparse.Namespace) -> int:
+    import os
+
     import uvicorn
+
+    if getattr(args, "fake", False):
+        os.environ["ROUNDTABLE_FAKE_LLM"] = "1"
     settings = get_settings()
     host = args.host or settings.host
     port = args.port or settings.port
@@ -207,6 +198,7 @@ def main(argv: list[str] | None = None) -> int:
     serve_p.add_argument("--host", default=None, help="Bind host (default from settings, 127.0.0.1).")
     serve_p.add_argument("--port", type=int, default=None, help="Bind port (default from settings, 8080).")
     serve_p.add_argument("--reload", action="store_true", help="Enable uvicorn auto-reload (development).")
+    serve_p.add_argument("--fake", action="store_true", help="Use the offline FakeLLM (no API calls).")
     export_p = sub.add_parser("export", help="Export a session's event stream (DESIGN.md §14.1, M6).")
     export_p.add_argument("session", help="Session id (UUID) to export.")
     export_p.add_argument("--format", choices=["jsonl", "csv"], default="jsonl", help="Output format (default jsonl).")

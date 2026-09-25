@@ -29,6 +29,29 @@ def _words(text: str) -> int:
     return len(text.split())
 
 
+#: A reusable pool of plausible debate turns for offline FakeLLM runs.
+SAMPLE_TURNS: list[str] = [
+    "I think we should start from the premise that the question is real, not hypothetical.",
+    "With respect, that assumes the evidence is as strong as it looks.",
+    "Could you give one concrete example where that has actually held up?",
+    "I largely agree, though I'd push back on the strength of the causal claim.",
+    "That's a fair point; let me steelman the other side before responding.",
+    "Here is where I diverge: the incentives, not the intentions, are what matter.",
+    "I'm not convinced that resolves the disclosure question you raised earlier.",
+    "If we accept that, then the practical standard becomes much simpler.",
+    "Let me be specific about the risk I see in your framing.",
+    "That's the strongest version of the argument so far, but it leaves a gap.",
+    "I'd like to concede one point before restating my core position.",
+    "To summarise where we land: we agree on the goal but disagree on the rule.",
+]
+
+
+def sample_responses(n: int = 60) -> list[str]:
+    """Deterministic response pool large enough for a multi-round session."""
+    base = SAMPLE_TURNS * (n // len(SAMPLE_TURNS) + 1)
+    return base[:n]
+
+
 class FakeLLM:
     """An :class:`LLMClient` that never touches the network."""
 

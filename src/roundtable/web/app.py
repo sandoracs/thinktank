@@ -103,6 +103,10 @@ def embedding_mismatch_message(stored: str | None, configured: str) -> str | Non
 
 
 def _default_llm(settings: Settings) -> LLMClient:
+    if settings.fake_llm:
+        from roundtable.llm.fake import FakeLLM, sample_responses
+
+        return FakeLLM(responses=sample_responses(60))
     from roundtable.llm.litellm_client import LiteLLMClient
 
     return LiteLLMClient(timeout_s=settings.llm_timeout_s)

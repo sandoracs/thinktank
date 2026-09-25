@@ -52,9 +52,15 @@ Without `--fake` a real LiteLLM model string is used (set `ANTHROPIC_API_KEY`,
 ## Run the web hub
 
 ```sh
-uv run roundtable serve --port 8080
+uv run roundtable serve --port 8080     # real LLM (set your provider API keys)
+uv run roundtable serve --fake          # offline: deterministic FakeLLM, no API calls
 # open http://127.0.0.1:8080
 ```
+
+Real LLM: put provider keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, …) in `.env`
+(see `.env.example`) or the environment. The default model is
+`claude-3-5-sonnet-latest` (`ROUNDTABLE_DEFAULT_MODEL`); each agent can override
+it with any LiteLLM model string (e.g. `ollama/qwen2.5` for a local Ollama).
 
 The dashboard lists sessions; the builder creates one; the live table shows the
 transcript with pause/resume/stop, human input, and (APPROVED mode) an approval

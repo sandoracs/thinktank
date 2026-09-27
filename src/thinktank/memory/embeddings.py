@@ -1,4 +1,4 @@
-"""Embedding providers (DESIGN.md §11).
+"""Embedding providers.
 
 Two built-ins:
 - :class:`FakeEmbeddingProvider` — deterministic hash vectors, no download.
@@ -69,7 +69,7 @@ class LiteLLMEmbeddingProvider(EmbeddingProvider):
 
 
 def build_embedding_provider(*, backend: str, model: str, dim: int) -> EmbeddingProvider:
-    """Construct the configured embedder (DESIGN.md §11).
+    """Construct the configured embedder.
 
     ``fake`` is the offline default (deterministic vectors, no download);
     ``litellm`` routes through Ollama or a hosted API.

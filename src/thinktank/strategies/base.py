@@ -1,4 +1,4 @@
-"""Turn strategy interface (DESIGN.md §8.2).
+"""Turn strategy interface.
 
 A strategy decides *who speaks next* and defines what a "round" is. Strategies
 are plugins: they are stateless across sessions but keep per-session state
@@ -6,7 +6,7 @@ reconstructed from the event stream via :meth:`on_event`, so replay is exact.
 
 ``Params`` exposes each strategy's configuration as a Pydantic model; the API
 returns the ``model_json_schema()`` and the UI generates a form from it
-(DESIGN.md §13) — a new strategy therefore shows up in the UI with no code change.
+ — a new strategy therefore shows up in the UI with no code change.
 """
 
 from __future__ import annotations

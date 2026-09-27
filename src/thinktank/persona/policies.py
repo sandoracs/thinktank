@@ -1,9 +1,9 @@
-"""Drift policies (DESIGN.md §8.4, §12.3).
+"""Drift policies.
 
 A policy maps a ``ReflectionResult`` proposal + a ``DriftConfig`` to a
 :class:`PolicyDecision`. The engine then either applies, clamps, rejects, or
 routes the change for approval — and records whichever as an event so the
-inspector's drift timeline is exact (DESIGN.md §12.3).
+inspector's drift timeline is exact.
 
 The four built-in modes are always importable here; external policies can be
 registered via the ``thinktank.drift_policies`` entry point (M5).

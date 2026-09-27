@@ -1,4 +1,4 @@
-"""sqlite-vec under aiosqlite (DESIGN.md M0 risk gate, §7, §11).
+"""sqlite-vec under aiosqlite.
 
 The design's top risk: loading the sqlite-vec extension into an aiosqlite
 connection on macOS. This test is the regression guard for that gate — it

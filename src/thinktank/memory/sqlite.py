@@ -1,11 +1,10 @@
-"""SQLite memory backend (DESIGN.md §7, §11).
+"""SQLite memory backend.
 
 The production :class:`MemoryBackend`: items live in ``memory_items``
 (source of truth for the text), their vectors in the ``memory_vec`` vec0
 table (``rowid`` = item id) and their full-text index in ``memory_fts``.
 Search is hybrid — vector top-k + FTS5 top-k, fused with Reciprocal Rank
-Fusion — and always scoped to one agent (DESIGN.md §11: memory is
-per-agent, never shared).
+Fusion — and always scoped to one agent (memory is per-agent, never shared).
 
 The engine must have been created with ``load_vec=True`` and
 ``init_memory_tables(engine, dim)`` must have run for the embedder's
@@ -48,7 +47,7 @@ def _pack_vector(vector: Sequence[float]) -> bytes:
 
 
 class SQLiteMemoryBackend(MemoryBackend):
-    """Vec + FTS hybrid memory backend over SQLite (DESIGN.md §11)."""
+    """Vec + FTS hybrid memory backend over SQLite."""
 
     def __init__(self, engine: AsyncEngine, embedder: EmbeddingProvider) -> None:
         self._engine = engine
@@ -135,7 +134,7 @@ class SQLiteMemoryBackend(MemoryBackend):
         return hits
 
     async def reembed(self, embedder: EmbeddingProvider) -> int:
-        """Re-embed every stored item with ``embedder`` (DESIGN.md §11, M3).
+        """Re-embed every stored item with ``embedder`` (M3).
 
         Re-vectors all ``memory_items`` with the new provider and repairs any
         missing FTS rows. If the provider's dimension differs from the one the

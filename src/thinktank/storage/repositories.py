@@ -1,4 +1,4 @@
-"""Repositories over the async session factory (DESIGN.md §3, §7).
+"""Repositories over the async session factory.
 
 The :class:`EventStore` is the single writer for the event stream: it assigns
 the per-session ``seq``, persists the row, and maintains the ``messages``
@@ -259,7 +259,7 @@ class EventStore:
             ).scalars().all()
         return list(rows)
 
-    # -- approvals (DESIGN.md §12.3, §14.1, M6) ---------------------------
+    # -- approvals (M6) ---------------------------
     async def list_approvals(
         self, session_id: uuid.UUID, agent_id: str | None = None
     ) -> list[dict[str, object]]:
@@ -306,7 +306,7 @@ class EventStore:
             )
             return (result.rowcount or 0) > 0  # pyright: ignore[reportUnknownVariableType,reportAttributeAccessIssue]
 
-    # -- export (DESIGN.md §14.1, M6) -------------------------------------
+    # -- export (M6) -------------------------------------
     async def export(self, session_id: uuid.UUID, format: str = "jsonl") -> str:
         """Render the full event stream as ``jsonl`` or ``csv`` text."""
         events = await self.get_events(session_id)
@@ -314,7 +314,7 @@ class EventStore:
 
 
 def render_export(events: list[Event], session_id: str, format: str) -> str:
-    """Render events as analysis-ready ``jsonl`` or ``csv`` (DESIGN.md §14.1).
+    """Render events as analysis-ready ``jsonl`` or ``csv``.
 
     JSONL: one JSON object per event, with message payloads inlined so the
     transcript is directly usable. CSV: a flat transcript of the spoken turns.

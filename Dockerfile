@@ -27,7 +27,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 # 2) the project itself (src/ is the package; hatchling builds the wheel)
 COPY src/ ./src/
 COPY templates/ ./templates/
-COPY DESIGN.md README.md LICENSE COMMERCIAL-LICENSE.md pyproject.toml ./
+COPY README.md LICENSE COMMERCIAL-LICENSE.md pyproject.toml ./
 RUN uv sync --frozen --no-dev --no-editable
 # ---------------------------------------------------------------------------
 # Runtime: lean, non-root, venv on PATH (no uv needed at run time).

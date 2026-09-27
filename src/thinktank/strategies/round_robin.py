@@ -1,4 +1,4 @@
-"""Built-in round-robin turn strategy (DESIGN.md §8.2).
+"""Built-in round-robin turn strategy.
 
 Deterministic by default: participants speak in session order, and a round is
 complete once every *active* participant has spoken. ``shuffle_each_round``

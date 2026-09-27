@@ -1,4 +1,4 @@
-"""Persona reflection / drift-policy integration tests (DESIGN.md §12, M4 acceptance).
+"""Persona reflection / drift-policy integration tests (M4 acceptance).
 
 M4 acceptance:
 - FREE mode: a stance change is applied, recorded in ``persona_versions``, visible
@@ -176,7 +176,7 @@ async def test_locked_without_shadow_never_reflects(harness: Harness) -> None:
     store, sid = await _start(harness, "locked")
     events = await store.get_events(sid)
 
-    # The design does not even run reflection for plain LOCKED (DESIGN.md §12.2).
+    # The design does not even run reflection for plain LOCKED.
     assert _by_type(events, EventType.REFLECTION_PROPOSED) == []
     assert _by_type(events, EventType.PERSONA_UPDATE_REJECTED) == []
     assert _by_type(events, EventType.PERSONA_UPDATED) == []

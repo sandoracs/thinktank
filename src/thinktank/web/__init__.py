@@ -1,1 +1,1 @@
-"""Web hub package (DESIGN.md §14, §15)."""
+"""Web hub package."""

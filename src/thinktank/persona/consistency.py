@@ -1,4 +1,4 @@
-"""Persona-consistency judge (DESIGN.md §12.1, M6).
+"""Persona-consistency judge (M6).
 
 Opt-in per agent: a judge model scores the candidate speech against the frozen
 persona core on a 1-5 scale and explains why. Below the agent's threshold the

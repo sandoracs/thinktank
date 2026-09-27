@@ -1,4 +1,4 @@
-"""Human participant (DESIGN.md §8.1).
+"""Human participant.
 
 ``speak`` blocks on an :class:`asyncio.Future`; the WebSocket layer (M2) resolves
 it when the person types (or taps a button). After ``human_timeout_s`` the
@@ -6,7 +6,7 @@ future is abandoned and ``speak`` returns ``None``, which the engine records as
 ``TurnSkipped(human_timeout)``.
 
 ``observe`` is a no-op: the human's client receives messages from the event
-bus, not through the participant (DESIGN.md §8.1).
+bus, not through the participant.
 """
 
 from __future__ import annotations

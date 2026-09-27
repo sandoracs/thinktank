@@ -1,4 +1,4 @@
-"""Context assembly for AI agents (DESIGN.md §10).
+"""Context assembly for AI agents.
 
 Builds the exact message sequence the design prescribes:
 

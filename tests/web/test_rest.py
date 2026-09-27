@@ -1,4 +1,4 @@
-"""REST API tests: agents, plugins, session lifecycle, events (DESIGN.md §14.1)."""
+"""REST API tests: agents, plugins, session lifecycle, events."""
 
 from __future__ import annotations
 
@@ -328,7 +328,7 @@ def test_starting_unknown_session_404s(client: TestClient) -> None:
 
 
 def test_reset_restores_session_and_restarts(client: TestClient) -> None:
-    """Reset wipes the conversation and lets the same session run again (DESIGN.md §15)."""
+    """Reset wipes the conversation and lets the same session run again."""
     session_id = client.post("/api/sessions", json=TWO_AGENT_SESSION).json()["id"]
     assert client.post(f"/api/sessions/{session_id}/start").status_code == 200
     assert _wait_status(client, session_id, {"ended"}) == "ended"
@@ -355,7 +355,7 @@ def test_reset_restores_session_and_restarts(client: TestClient) -> None:
 
 
 def test_session_edit_flow(client: TestClient) -> None:
-    """A not-yet-started session can be edited; a started one cannot (DESIGN.md §15)."""
+    """A not-yet-started session can be edited; a started one cannot."""
     session_id = client.post("/api/sessions", json=TWO_AGENT_SESSION).json()["id"]
 
     # The edit page is prefilled with the stored config.
@@ -837,8 +837,8 @@ def test_session_template_api_errors(client: TestClient) -> None:
 
 
 def test_memory_search_endpoint(client: TestClient) -> None:
-    # Run a session to completion so the agents distil episodic memory
-    # (DESIGN.md §11); both writes and the search then happen on the app loop.
+    # Run a session to completion so the agents distil episodic memory;
+    # both writes and the search then happen on the app loop.
     created = client.post("/api/sessions", json=TWO_AGENT_SESSION)
     assert created.status_code == 201, created.text
     sid = created.json()["id"]

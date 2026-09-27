@@ -2,7 +2,7 @@
 name = "thinktank"
 version = "0.1.0"
 description = "Multi-party debate system: AI agents and humans talk around a virtual table."
-readme = "DESIGN.md"
+readme = "README.md"
 license = { text = "MIT or Commercial (see LICENSE and COMMERCIAL-LICENSE.md)" }
 requires-python = ">=3.12"
 dependencies = [
@@ -41,7 +41,7 @@ thinktank = "thinktank.cli:main"
 
 # ---------------------------------------------------------------------------
 # Plugin entry points. Built-ins are registered through the same mechanism as
-# external plugins (see DESIGN.md §13).
+# external plugins.
 # ---------------------------------------------------------------------------
 [project.entry-points."thinktank.turn_strategies"]
 round_robin = "thinktank.strategies.round_robin:RoundRobin"

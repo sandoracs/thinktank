@@ -1,4 +1,4 @@
-"""In-process event bus (DESIGN.md §3).
+"""In-process event bus.
 
 Two responsibilities, kept deliberately separate:
 - **Durability:** every :meth:`emit` appends through the event store, which

@@ -1,4 +1,4 @@
-"""FastAPI hub application (DESIGN.md §14, §15).
+"""FastAPI hub application.
 
 Wires the M1 core (manager / store / engine) to HTTP: REST for control and
 data, one WebSocket per session for the lossless live feed (replay from
@@ -109,7 +109,7 @@ def _static_version() -> str:
     """Cache-busting token derived from the static assets' mtimes.
 
     Any change to ``live.js``/``app.css``/… produces a new URL, so a browser
-    can never serve a stale copy from its heuristic cache (DESIGN.md §15).
+    can never serve a stale copy from its heuristic cache.
     """
     latest = 0
     for entry in (_WEB / "static").iterdir():
@@ -173,7 +173,7 @@ async def _rehydrate_created_sessions(store: EventStore, factory: Any, hub: WebH
 
     The hub's in-memory session registry starts empty on every process
     restart; without this, a session that was created but never started would
-    be stuck returning 409 from ``/start`` forever (DESIGN.md §15).
+    be stuck returning 409 from ``/start`` forever.
     """
     for row in await store.list_sessions():
         if row.status != STATUS_CREATED:
@@ -247,7 +247,7 @@ async def _fetch_provider_models(provider_family: str, base_url: str | None, api
     return sorted(m.get("id") for m in data.get("data", []) if m.get("id"))
 
 def _config_from_form(form: FormData) -> SessionConfig:
-    """Build a SessionConfig from the builder form (DESIGN.md §15)."""
+    """Build a SessionConfig from the builder form."""
     title = str(form.get("title") or "").strip()
     topic = str(form.get("topic") or "").strip()
     if not title or not topic:
@@ -319,7 +319,7 @@ def _slugify(text: str) -> str:
 
 
 def _agent_from_form(form: FormData) -> AgentConfig:
-    """Build an AgentConfig from the library form (DESIGN.md §15)."""
+    """Build an AgentConfig from the library form."""
 
     def _csv(key: str) -> list[str]:
         return [part.strip() for part in str(form.get(key) or "").split(",") if part.strip()]
@@ -384,7 +384,7 @@ def _agent_from_form(form: FormData) -> AgentConfig:
 async def _inspector_data(
     deps: dict[str, Any], sid: uuid.UUID, agent_id: str
 ) -> dict[str, Any]:
-    """Assemble the agent-inspector payload (DESIGN.md §15, M4)."""
+    """Assemble the agent-inspector payload (M4)."""
     store: EventStore = deps["store"]
     manager: SessionManager = deps["manager"]
     factory = deps["factory"]
@@ -422,7 +422,7 @@ async def _inspector_data(
     }
 
 
-# Settings form (DESIGN.md §15 "Settings"): one entry per Settings field.
+# Settings form ("Settings"): one entry per Settings field.
 # ``live`` = the value is re-read on the next use without a hub restart.
 SETTINGS_SECTIONS: list[dict[str, Any]] = [
     {
@@ -574,7 +574,7 @@ def create_app(
     memory: MemoryBackend | None = None,
     embedder: EmbeddingProvider | None = None,
 ) -> FastAPI:
-    """Build the hub app (DESIGN.md §14). See module docstring for scope."""
+    """Build the hub app. See module docstring for scope."""
     resolved_settings = settings or get_settings()
     resolved_db = database_url or resolved_settings.database_url
     resolved_llm = llm
@@ -628,7 +628,7 @@ def create_app(
     async def static_no_cache(
         request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
     ) -> Response:
-        """Revalidate static assets on every load (DESIGN.md §15: single-machine tool).
+        """Revalidate static assets on every load (single-machine tool).
 
         Without a ``Cache-Control`` header browsers apply heuristic caching and
         can serve a stale ``live.js``/``app.js`` after a code change; ETag
@@ -662,7 +662,7 @@ def create_app(
             )
         return _page("pages/dashboard.html", {"sessions": items, "active": "dashboard", "title": "Boardroom"})
 
-    # LLM providers registered from the Settings page (DESIGN §15).
+    # LLM providers registered from the Settings page.
     provider_registry = ProviderRegistry(Path(resolved_settings.data_dir) / "llm_providers.json")
 
     @app.get("/settings", response_class=HTMLResponse)
@@ -898,7 +898,7 @@ def create_app(
 
     @app.get("/sessions/{session_id}/edit", response_class=HTMLResponse)
     async def edit_session_page(request: Request, session_id: str) -> HTMLResponse:
-        """Prefilled config form for a session that has not started yet (DESIGN.md §15)."""
+        """Prefilled config form for a session that has not started yet."""
         sid = _parse_session_id(session_id)
         if sid is None:
             raise HTTPException(status_code=404, detail="Unknown session")
@@ -1115,7 +1115,7 @@ def create_app(
 
         The session keeps its id, config, and human tokens; the event stream
         starts over from ``SESSION_CREATED`` and the session can be started
-        again with ``/start`` (DESIGN.md §15 control bar).
+        again with ``/start`` (control bar).
         """
         sid = _parse_session_id(session_id)
         if sid is None:
@@ -1135,7 +1135,7 @@ def create_app(
 
     @app.delete("/api/sessions/{session_id}", status_code=204)
     async def api_delete_session(session_id: str, request: Request) -> Response:
-        """Delete a session and its stored conversation (DESIGN.md §15 control bar).
+        """Delete a session and its stored conversation (control bar).
 
         The session row, events, messages, persona history and approvals are
         removed; agent memory is kept. Refused while the session is active.
@@ -1182,7 +1182,7 @@ def create_app(
         request: Request,
         format: str = Query(default="jsonl", pattern="^(jsonl|csv)$"),
     ) -> Response:
-        """Analysis-ready export of the full event stream (DESIGN.md §14.1, M6)."""
+        """Analysis-ready export of the full event stream (M6)."""
         sid = _parse_session_id(session_id)
         if sid is None:
             raise HTTPException(status_code=404, detail="Unknown session")
@@ -1198,7 +1198,7 @@ def create_app(
 
     @app.get("/api/sessions/{session_id}/approvals")
     async def api_approvals(session_id: str, request: Request) -> list[dict[str, Any]]:
-        """List a session's persona-change approval requests (DESIGN.md §14.1, M6)."""
+        """List a session's persona-change approval requests (M6)."""
         sid = _parse_session_id(session_id)
         if sid is None:
             raise HTTPException(status_code=404, detail="Unknown session")
@@ -1209,7 +1209,7 @@ def create_app(
     async def api_decide_approval(
         session_id: str, agent_id: str, request: Request, body: dict[str, Any]
     ) -> dict[str, Any]:
-        """Approve or reject a pending persona change (DESIGN.md §12.3, M6)."""
+        """Approve or reject a pending persona change (M6)."""
         sid = _parse_session_id(session_id)
         if sid is None:
             raise HTTPException(status_code=404, detail="Unknown session")
@@ -1258,7 +1258,7 @@ def create_app(
         k: int = Query(default=5, ge=1, le=50),
         layer: str = Query(default="all", description="working | episodic | long_term | all"),
     ) -> dict[str, Any]:
-        """Search an agent's memory (DESIGN.md §15 "memory search")."""
+        """Search an agent's memory ("memory search")."""
         sid = _parse_session_id(session_id)
         if sid is None:
             raise HTTPException(status_code=404, detail="Unknown session")
@@ -1415,7 +1415,7 @@ def create_app(
         ws.thinktank_participant = human_id  # type: ignore[attr-defined]
 
         # Replay from the database, applying each event to a local state so the
-        # fragments render exactly as they would live (DESIGN.md §14.2).
+        # fragments render exactly as they would live.
         state = SessionState()
         history = await store.get_events(sid)
         for event in history:
@@ -1436,7 +1436,7 @@ def create_app(
 
         # If this human's turn is already pending (assigned but not yet
         # answered) when they (re)connect, hand them the prompt now — the live
-        # path does the same from the bus (DESIGN.md §14.2 ``your_turn``).
+        # path does the same from the bus (``your_turn``).
         if human_id is not None and state.status == "running" and _pending_turn_for(history, human_id):
             deadline = datetime.now(UTC) + timedelta(seconds=manager.human_timeout_s)
             await ws.send_json(

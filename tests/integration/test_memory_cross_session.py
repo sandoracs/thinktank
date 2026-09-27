@@ -1,4 +1,4 @@
-"""Cross-session memory integration test (DESIGN.md §18 M3 acceptance).
+"""Cross-session memory integration test (M3 acceptance).
 
 M3 "done when": *in a second session, the agent references the previous
 session's lesson* — the second session's agent must have the previous

@@ -1,10 +1,9 @@
 """Core domain models.
 
 These are the Pydantic value objects shared across the engine, storage, API and
-UI. They follow DESIGN.md §5. The split between *immutable core* (persona
-``core``) and *mutable state* (persona ``state``) is load-bearing: the drift
-policies may only ever touch ``PersonaState`` fields, never the frozen core
-(DESIGN.md §12.1).
+UI. The split between *immutable core* (persona ``core``) and *mutable state*
+(persona ``state``) is load-bearing: the drift policies may only ever touch
+``PersonaState`` fields, never the frozen core.
 """
 
 from __future__ import annotations
@@ -36,7 +35,7 @@ class PersonaCore(BaseModel):
     boundaries: list[str] = Field(default_factory=list)
 
     def render(self) -> str:
-        """Human-readable rendering for the system prompt (DESIGN.md §10.1)."""
+        """Human-readable rendering for the system prompt."""
         lines = [
             f"{self.name} — {self.role}",
         ]
@@ -97,7 +96,7 @@ class DriftConfig(BaseModel):
 # Memory
 # ---------------------------------------------------------------------------
 class Layer(StrEnum):
-    """The three memory layers (DESIGN.md §11)."""
+    """The three memory layers."""
 
     WORKING = "working"
     EPISODIC = "episodic"
@@ -184,7 +183,7 @@ class AgentConfig(BaseModel):
 
 
 class RemoteConfig(BaseModel):
-    """Configuration for one remote participant (DESIGN.md §8.1, M7).
+    """Configuration for one remote participant (M7).
 
     A remote agent is an external service the table talks to over HTTP: the
     context is POSTed to ``{url}/speak`` and the reply becomes the message.
@@ -198,7 +197,7 @@ class RemoteConfig(BaseModel):
 
 
 class DebateQuestion(BaseModel):
-    """A debate question the discussion is measured against (DESIGN.md §5.3)."""
+    """A debate question the discussion is measured against."""
 
     id: str
     text: str
@@ -217,7 +216,7 @@ class StopConditions(BaseModel):
 
 
 class SessionConfig(BaseModel):
-    """Full configuration snapshot captured into the first event (DESIGN.md §6)."""
+    """Full configuration snapshot captured into the first event."""
 
     title: str
     topic: str

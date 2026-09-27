@@ -1,4 +1,4 @@
-"""Approval workflow integration tests (DESIGN.md §12.3, §14.1, M6 acceptance).
+"""Approval workflow integration tests (M6 acceptance).
 
 APPROVED drift mode: a reflection proposal becomes a pending approval instead of
 being applied. Until a human approves or rejects it the old persona state holds;

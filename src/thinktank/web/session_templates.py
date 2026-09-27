@@ -1,4 +1,4 @@
-"""Session-template persistence (DESIGN.md §7 ``session_templates``, §15).
+"""Session-template persistence (``session_templates``).
 
 A saved session is a reusable configuration: the builder's "save as template"
 stores the current form as a template, and the builder can prefill from one.

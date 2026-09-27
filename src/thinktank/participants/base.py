@@ -1,7 +1,7 @@
-"""Participant interface (DESIGN.md §3 principle 2, §8.1).
+"""Participant interface.
 
 One interface for every seat at the table — AI, human, or remote. The engine
-does not know *who* is speaking (DESIGN.md §9); it only calls :meth:`speak`,
+does not know *who* is speaking; it only calls :meth:`speak`,
 :meth:`observe`, and :meth:`on_session_end`. ``speak`` returning ``None`` is
 the universal "no turn" signal (a human timeout, a pass, a disabled agent),
 which the engine records as ``TurnSkipped``.
@@ -20,7 +20,7 @@ from thinktank.persona.reflection import ReflectionResult
 
 
 class TurnContext(BaseModel):
-    """Context handed to a participant for one turn (DESIGN.md §8.1)."""
+    """Context handed to a participant for one turn."""
 
     session_id: uuid.UUID
     round: int

@@ -48,7 +48,7 @@ class Settings(BaseSettings):
     llm_max_concurrency: int = Field(default=8, ge=1, description="Global cap on concurrent LLM calls.")
     embedding_model: str = Field(
         default="paraphrase-multilingual-MiniLM-L12-v2",
-        description="Multilingual embedding model for the ``litellm`` backend (DESIGN.md §11).",
+        description="Multilingual embedding model for the ``litellm`` backend.",
     )
     embedding_backend: str = Field(
         default="fake",

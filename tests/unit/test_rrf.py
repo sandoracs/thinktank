@@ -1,4 +1,4 @@
-"""Reciprocal Rank Fusion unit tests (DESIGN.md §17: RRF fusion)."""
+"""Reciprocal Rank Fusion unit tests (RRF fusion)."""
 
 from __future__ import annotations
 

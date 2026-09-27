@@ -1,7 +1,7 @@
 """Default agent templates seeded into ``agent_templates`` on first start.
 
-Same four agents as the documented example (DESIGN.md §16); defined in code so
-the hub has a stable, file-independent library (DESIGN.md §15 "Persona Templates").
+Same four agents as the documented example; defined in code so
+the hub has a stable, file-independent library ("Persona Templates").
 """
 
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Bidding turn strategy (DESIGN.md §8.2).
+"""Bidding turn strategy.
 
 A second built-in strategy, registered through the same entry-point mechanism
 as every other plugin. Instead of a fixed order, each *unspeoken* active
@@ -55,7 +55,7 @@ class Bidding(TurnStrategy):
 
     @property
     def _p(self) -> Bidding.Params:
-        """The strategy's typed parameters (DESIGN.md §13 Params schema)."""
+        """The strategy's typed parameters (Params schema)."""
         if isinstance(self.params, Bidding.Params):
             return self.params
         return Bidding.Params.model_validate(self.params.model_dump())

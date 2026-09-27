@@ -1,4 +1,4 @@
-"""Web hub tests (DESIGN.md §17: REST + WebSocket, FakeLLM, temp SQLite)."""
+"""Web hub tests (REST + WebSocket, FakeLLM, temp SQLite)."""
 from __future__ import annotations
 
 from collections.abc import Iterator

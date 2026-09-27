@@ -1,4 +1,4 @@
-"""Memory backend abstraction (DESIGN.md §8.3, §11).
+"""Memory backend abstraction.
 
 The three layers (working / episodic / long-term) are addressed by
 :class:`thinktank.domain.models.Layer`. Working memory is not stored here — it
@@ -7,7 +7,7 @@ and long-term items.
 
 Retrieval is hybrid: vector top-k + FTS top-k, fused with Reciprocal Rank
 Fusion. :func:`reciprocal_rank_fusion` is a pure function so it can be unit
-tested in isolation (DESIGN.md §17).
+tested in isolation.
 """
 
 from __future__ import annotations

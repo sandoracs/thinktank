@@ -1,15 +1,15 @@
-"""The debate engine (DESIGN.md §9).
+"""The debate engine.
 
 Drives one session: moderator opens, then rounds of turns until a stop
 condition holds, then the moderator closes. Every fact is emitted through
 :meth:`emit`, which (1) persists it with an assigned ``seq``, (2) applies it to
 the live :class:`SessionState`, and (3) feeds it to the strategy — so the live
 path and the replay path (which rebuilds state from the same events) stay
-identical (DESIGN.md §9.2).
+identical.
 
 Error handling: a failed ``speak`` becomes ``Error`` + ``TurnSkipped(error)``
 and the debate continues; three consecutive failures disable the participant
-for the rest of the session (DESIGN.md §9.2).
+for the rest of the session.
 """
 
 from __future__ import annotations
@@ -216,7 +216,7 @@ class SessionEngine:
         await self._reflect_round(round_no)
         self._state.round_complete = False
 
-    # -- reflection (DESIGN.md §12.2, M4) ---------------------------------
+    # -- reflection (M4) ---------------------------------
     async def _reflect_round(self, round_no: int) -> None:
         """Ask each AI participant to reflect; evaluate + record the proposal."""
         if round_no % max(1, self._config.reflection_every_rounds) != 0:
@@ -231,7 +231,7 @@ class SessionEngine:
                 and not drift.shadow_reflection
             ):
                 # LOCKED without shadow: the design does not even run reflection
-                # (DESIGN.md §12.2) — nothing to propose, nothing to log.
+                # — nothing to propose, nothing to log.
                 continue
             try:
                 proposal = await participant.reflect(self._state)
@@ -242,7 +242,7 @@ class SessionEngine:
             if proposal is None:
                 continue
             # Shadow log: every non-empty proposal is recorded, whether or not
-            # the drift policy later applies it (DESIGN.md §12.3 shadow mode).
+            # the drift policy later applies it (shadow mode).
             shadow = drift is not None and bool(drift.shadow_reflection)
             proposed = await self.emit(
                 EventType.REFLECTION_PROPOSED,
@@ -317,7 +317,7 @@ class SessionEngine:
             notes=notes or [],
         )
 
-    # -- approvals (DESIGN.md §12.3, M6) ---------------------------------
+    # -- approvals (M6) ---------------------------------
     async def decide_approval(self, agent_id: str, decision: str) -> bool:
         """Approve or reject a pending persona change (APPROVED drift mode).
 

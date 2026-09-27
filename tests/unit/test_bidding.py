@@ -1,4 +1,4 @@
-"""Bidding strategy unit tests (DESIGN.md §8.2, M5).
+"""Bidding strategy unit tests (M5).
 
 Bidding picks the highest bidder for each slot; a round ends once every active
 participant has spoken. Bids come from a (cheap, structured-output) LLM call,

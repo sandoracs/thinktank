@@ -1,4 +1,4 @@
-# A design-documented example session (DESIGN.md §16).
+# An example session configuration.
 # Run headless with:   thinktank run templates/sessions/llm_coauthorship.yaml
 # (add --fake for an offline run with no API key)
 title: "Can an LLM be a co-author?"

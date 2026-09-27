@@ -1,4 +1,4 @@
-"""Server-rendered HTML fragments for the live table (DESIGN.md §15).
+"""Server-rendered HTML fragments for the live table.
 
 Every event the WebSocket layer forwards also carries small pre-rendered
 fragments: a ``transcript`` row (when the event is user-visible) and a fresh

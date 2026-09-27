@@ -1,4 +1,4 @@
-"""Persona manager (DESIGN.md §12.3).
+"""Persona manager.
 
 Resolves a drift policy from an agent's :class:`DriftConfig`, evaluates a
 reflection proposal, and hands the :class:`PolicyDecision` back to the engine.

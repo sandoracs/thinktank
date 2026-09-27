@@ -1,4 +1,4 @@
-"""State-projection regression tests (DESIGN.md §6 event sourcing).
+"""State-projection regression tests (event sourcing).
 
 The dashboard/inspector re-derive ``SessionState`` by folding the event
 stream; a payload schema mismatch here 500s every view that touches the

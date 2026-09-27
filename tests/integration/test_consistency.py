@@ -1,4 +1,4 @@
-"""Persona-consistency check (DESIGN.md §12.1, M6).
+"""Persona-consistency check (M6).
 
 The opt-in judge scores the candidate speech against the frozen persona core.
 Below the threshold the speech is regenerated once with the judge's feedback;

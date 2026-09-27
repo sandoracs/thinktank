@@ -1,4 +1,4 @@
-"""Event types and payload schemas (event sourcing, DESIGN.md §6).
+"""Event types and payload schemas (event sourcing).
 
 The ``events`` table is the single source of truth. Every domain fact is
 expressed as an event; ``messages``, ``persona_versions`` etc. are projections

@@ -1,8 +1,8 @@
-"""Plugin registry (DESIGN.md §13).
+"""Plugin registry.
 
 Built-ins and external plugins are loaded through the *same* mechanism:
 ``importlib.metadata`` entry points grouped by extension surface. A broken
-plugin is logged and skipped so the hub still starts (DESIGN.md §13).
+plugin is logged and skipped so the hub still starts.
 
 The registry is the single place that maps a strategy name to its class and
 instantiates it from a :class:`StrategyRef`, which is what lets a new strategy

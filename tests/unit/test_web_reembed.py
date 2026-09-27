@@ -1,4 +1,4 @@
-"""Tests for the embedding model-mismatch helper (DESIGN.md §11, M3).
+"""Tests for the embedding model-mismatch helper (M3).
 
 The hub signals an error at startup when stored memory vectors were produced by
 a different model than the one now configured; ``thinktank reembed`` is the

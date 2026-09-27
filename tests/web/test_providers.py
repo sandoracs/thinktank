@@ -1,4 +1,4 @@
-"""LLM provider registration on the Settings page (DESIGN §15)."""
+"""LLM provider registration on the Settings page."""
 
 from __future__ import annotations
 

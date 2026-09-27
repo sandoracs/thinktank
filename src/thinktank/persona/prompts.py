@@ -1,4 +1,4 @@
-"""Reflection prompt (DESIGN.md §12.2).
+"""Reflection prompt.
 
 The model may only propose changes to :class:`PersonaState` (stances,
 attitudes, mood) — never to the frozen core. The prompt explicitly permits

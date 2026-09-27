@@ -1,6 +1,6 @@
 """LiteLLM-backed :class:`LLMClient`.
 
-Responsibilities (DESIGN.md §8.5):
+Responsibilities:
 - tenacity retry on rate-limit / 5xx / connection / timeout errors;
 - an ``asyncio.Semaphore`` bounding global concurrency;
 - cost accounting via ``litellm.completion_cost``;

@@ -1,4 +1,4 @@
-"""Settings page: configure everything from the .env file (DESIGN §15)."""
+"""Settings page: configure everything from the .env file."""
 
 from __future__ import annotations
 

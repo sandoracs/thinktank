@@ -1,4 +1,4 @@
-"""LLM-backed AI participant (DESIGN.md §8.1).
+"""LLM-backed AI participant.
 
 ``speak`` runs the pipeline the design prescribes:
 ContextBuilder -> LLMClient -> (consistency check, off by default) -> Message,
@@ -6,7 +6,7 @@ and emits an ``LLMCallCompleted`` event so the engine's cost accounting and the
 live UI see every model call. Working memory is projected by the engine from
 the event stream, so ``observe`` is a no-op.
 
-At session end the agent distils its memory (DESIGN.md §11): an episodic
+At session end the agent distils its memory: an episodic
 summary of this session, then up to a few durable long-term lessons, both
 stored through the injected :class:`MemoryBackend` and logged as
 ``MemoryWritten`` events.
@@ -128,7 +128,7 @@ class AIAgent:
         )
 
     async def _consistency_check(self, candidate: str) -> tuple[str, int, int, float]:
-        """Optional persona-consistency pass (DESIGN.md §12.1, M6).
+        """Optional persona-consistency pass (M6).
 
         The judge scores the candidate against the frozen core (1-5). Below the
         threshold the speech is regenerated once with the judge's feedback. A
@@ -199,7 +199,7 @@ class AIAgent:
         return self._config.initial_state
 
     async def reflect(self, state: SessionState) -> ReflectionResult | None:
-        """Round-end self-reflection: propose persona-state changes (DESIGN.md §12.2)."""
+        """Round-end self-reflection: propose persona-state changes."""
         persona_state = state.persona_states.get(self.id) or self._config.initial_state
         messages, schema = reflection_messages(
             agent_name=self.display_name,
@@ -224,7 +224,7 @@ class AIAgent:
         return None
 
     async def on_session_end(self) -> None:
-        """Distil episodic + long-term memory (DESIGN.md §11)."""
+        """Distil episodic + long-term memory."""
         if self._memory is None or self._session_id is None:
             return
         transcript = self._transcript()

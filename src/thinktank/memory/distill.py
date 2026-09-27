@@ -1,4 +1,4 @@
-"""Memory distillation prompts (DESIGN.md §11).
+"""Memory distillation prompts.
 
 Two side calls at session end, both with ``purpose="summary"``:
 

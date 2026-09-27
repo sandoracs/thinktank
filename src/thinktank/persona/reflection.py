@@ -1,11 +1,11 @@
-"""Reflection output schema (DESIGN.md §12.2).
+"""Reflection output schema.
 
 The reflection prompt may only ever propose changes to :class:`PersonaState`
 fields — the frozen :class:`PersonaCore` is not part of this schema, so a
-drift policy can, by type, never touch the core (DESIGN.md §12.1).
+drift policy can, by type, never touch the core.
 
 The prompt explicitly permits a "no change" answer (empty ``stance_updates`` /
-``attitude_updates``) to suppress artificial convergence (DESIGN.md §12.2).
+``attitude_updates``) to suppress artificial convergence.
 """
 
 from __future__ import annotations

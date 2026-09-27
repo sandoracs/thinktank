@@ -1,5 +1,4 @@
-"""Web hub: in-process registry of live sessions for the FastAPI layer
-(DESIGN.md §14, §15).
+"""Web hub: in-process registry of live sessions for the FastAPI layer.
 
 Owns per-session live state that outlives a single request: the running
 :class:`SessionEngine`, the ``HumanParticipant`` instances the WebSocket

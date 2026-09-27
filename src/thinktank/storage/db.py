@@ -1,4 +1,4 @@
-"""Async engine, pragmas, and schema bootstrap (DESIGN.md §7, §17).
+"""Async engine, pragmas, and schema bootstrap.
 
 Per the design, every connection applies ``journal_mode=WAL``,
 ``foreign_keys=ON``, and ``busy_timeout=5000``. The sqlite-vec extension is

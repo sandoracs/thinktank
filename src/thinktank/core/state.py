@@ -1,9 +1,9 @@
-"""Session state and its projection from events (DESIGN.md §3, §7, §9).
+"""Session state and its projection from events.
 
 ``SessionState`` is a *derived, in-memory* view — never persisted as the source
 of truth. It is rebuilt by :func:`project`, the exact same code path used for
-live sessions, replays, and crash-resume (DESIGN.md §9.2). That identity is what
-makes the replay test meaningful (DESIGN.md §17).
+live sessions, replays, and crash-resume. That identity is what
+makes the replay test meaningful.
 
 The strategy keeps its own transient state (who has spoken this round) via
 ``on_event``; this projection holds the durable facts the engine and UI need.
@@ -30,7 +30,7 @@ from thinktank.domain.events import (
 )
 from thinktank.domain.models import Message, PersonaState, SessionConfig
 
-# Durable session lifecycle values (DESIGN.md §7).
+# Durable session lifecycle values.
 STATUS_CREATED = "created"
 STATUS_RUNNING = "running"
 STATUS_PAUSED = "paused"

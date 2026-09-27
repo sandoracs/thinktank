@@ -1,4 +1,4 @@
-"""SQLAlchemy 2.0 ORM models (DESIGN.md §7).
+"""SQLAlchemy 2.0 ORM models.
 
 These are the *persisted* projections and records. The ``events`` table is the
 source of truth; ``messages``, ``persona_versions`` etc. are rebuilt from it.

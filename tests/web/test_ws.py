@@ -1,5 +1,5 @@
 """WebSocket tests: lossless replay, human participation, hand raise, tokens
-(DESIGN.md §14.2, §17, and the M2 acceptance criteria)."""
+(and the M2 acceptance criteria)."""
 
 from __future__ import annotations
 

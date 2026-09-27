@@ -138,4 +138,4 @@ this commercial track is:
 If your goal is instead to **prevent** commercial use or to **require** source
 sharing, the MIT + commercial pairing does not achieve that — for that outcome
 you would want a source-available or copyleft base (e.g. BSL or AGPL) plus a
-commercial license. See the repo `DESIGN.md` / `README.md` "Licensing" note.
+commercial license. See the repo `README.md` "Licensing" note.

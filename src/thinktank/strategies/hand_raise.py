@@ -1,4 +1,4 @@
-"""Hand-raise priority wrapper (DESIGN.md §8.2).
+"""Hand-raise priority wrapper.
 
 A wrapper, not a standalone strategy: it delegates to an inner strategy but
 always gives the floor to a raised hand first (FIFO). This keeps hand-raising

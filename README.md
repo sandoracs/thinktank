@@ -52,7 +52,8 @@ uv run pyright                  # strict type-check (0 errors)
 
 ## Run headless (research)
 
-Create a session YAML (see `DESIGN.md` §16 for the full example), then:
+Create a session YAML (see `templates/sessions/llm_coauthorship.yaml` for a
+full example), then:
 
 ```sh
 uv run thinktank run session.yaml --fake   # offline FakeLLM, no API calls
@@ -142,13 +143,12 @@ then redirects to the library. Endpoints: see [API](#api).
 ## Session templates (save-as / prefill)
 
 Save a builder form as a reusable session configuration, then prefill the
-builder from any saved template (DESIGN §7 `session_templates`, §15 "save as
-template"); the builder lists saved templates and loads one with the "Load"
-button. Endpoints: see [API](#api).
+builder from any saved template; the builder lists saved templates and loads
+one with the "Load" button. Endpoints: see [API](#api).
 
 ## Session edit and delete
 
-A session that has not started yet can be edited after creation (DESIGN §15 session editing):
+A session that has not started yet can be edited after creation:
 - **Live view:** the "Edit" button — enabled only while the status is
   `created` (dimmed while running/paused/ended).
 - **Edit page:** the builder form prefilled with the stored configuration.
@@ -167,7 +167,7 @@ Endpoints: see [API](#api).
 ## Agent memory search (inspector)
 
 Search an agent's episodic + long-term memory from the agent inspector
-(DESIGN §15 "memory search") over the hybrid `MemoryBackend`. Endpoint: see
+("memory search") over the hybrid `MemoryBackend`. Endpoint: see
 [API](#api).
 
 ## Agent form: memory + initial state

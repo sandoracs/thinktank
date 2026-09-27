@@ -1,4 +1,4 @@
-"""SQLiteMemoryBackend tests (DESIGN.md §11, §17).
+"""SQLiteMemoryBackend tests.
 
 Covers the production memory path: ``memory_items`` + ``memory_vec`` (vec0)
 + ``memory_fts`` (FTS5) + Reciprocal Rank Fusion, with the deterministic

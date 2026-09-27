@@ -1,7 +1,7 @@
-"""Command-line interface (DESIGN.md §17, §18 M1).
+"""Command-line interface (M1).
 
 ``thinktank run template.yaml`` runs a full debate headless — the design's
-"usable for research from the CLI without the UI" milestone (DESIGN.md §18).
+"usable for research from the CLI without the UI" milestone.
 Every posted message is printed live as it happens.
 
 ``--fake`` runs the whole pipeline against the offline :class:`FakeLLM`, so the
@@ -203,13 +203,13 @@ def main(argv: list[str] | None = None) -> int:
     serve_p.add_argument("--port", type=int, default=None, help="Bind port (default from settings, 8080).")
     serve_p.add_argument("--reload", action="store_true", help="Enable uvicorn auto-reload (development).")
     serve_p.add_argument("--fake", action="store_true", help="Use the offline FakeLLM (no API calls).")
-    export_p = sub.add_parser("export", help="Export a session's event stream (DESIGN.md §14.1, M6).")
+    export_p = sub.add_parser("export", help="Export a session's event stream (M6).")
     export_p.add_argument("session", help="Session id (UUID) to export.")
     export_p.add_argument("--format", choices=["jsonl", "csv"], default="jsonl", help="Output format (default jsonl).")
     export_p.add_argument("--out", default=None, help="Write to this file instead of stdout.")
     sub.add_parser(
         "reembed",
-        help="Recompute memory embeddings after a model change (DESIGN.md §11, M3).",
+        help="Recompute memory embeddings after a model change (M3).",
     )
 
     args = parser.parse_args(argv)
@@ -223,7 +223,7 @@ def main(argv: list[str] | None = None) -> int:
         return _export(args)
     if args.command == "reembed":
         return asyncio.run(_reembed(args))
-    print(f"`thinktank {args.command}` is available in a later milestone (see DESIGN.md §18).")
+    print(f"`thinktank {args.command}` is available in a later milestone (see).")
     return 0
 
 

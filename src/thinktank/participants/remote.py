@@ -1,7 +1,7 @@
 """Remote participant: an external agent that joins the table over HTTP.
 
-DESIGN.md §8.1 / M7. A remote agent is any service (AG2, LangGraph, a custom
-bot, ...) that speaks the same protocol the design fixes:
+A remote agent is any service (AG2, LangGraph, a custom bot, ...) that speaks
+the same fixed protocol:
 
     POST {url}/speak        body: context JSON   -> {"content": "..."}
     POST {url}/observe      body: message JSON   -> {}

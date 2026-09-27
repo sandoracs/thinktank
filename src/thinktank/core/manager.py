@@ -1,11 +1,10 @@
-"""Session manager: lifecycle, participant construction, crash recovery
-(DESIGN.md §3, §9.2).
+"""Session manager: lifecycle, participant construction, crash recovery.
 
 Owns the single :class:`EventBus` and :class:`EventStore` for the process and
 builds a :class:`SessionEngine` per session. On startup it marks any session
-left ``running`` as ``interrupted`` so a crash never leaves a zombie session
-(DESIGN.md §9.2); replay/resume rebuilds state by projecting the stored events
-through the same code path used live.
+left ``running`` as ``interrupted`` so a crash never leaves a zombie session;
+replay/resume rebuilds state by projecting the stored events through the same
+code path used live.
 """
 
 from __future__ import annotations
@@ -56,7 +55,7 @@ class SessionManager:
 
     @property
     def human_timeout_s(self) -> float:
-        """Seconds a human has to answer before the turn is skipped (DESIGN.md §8.1)."""
+        """Seconds a human has to answer before the turn is skipped."""
         return self._human_timeout_s
 
     @property
@@ -223,7 +222,7 @@ class SessionManager:
     def stop(self, engine: SessionEngine, reason: str = "manual") -> None:
         engine.stop(reason)
 
-    # -- approvals (DESIGN.md §12.3, M6) ----------------------------------
+    # -- approvals (M6) ----------------------------------
     async def list_approvals(self, session_id: uuid.UUID, agent_id: str | None = None) -> list[dict[str, object]]:
         return await self._store.list_approvals(session_id, agent_id=agent_id)
 

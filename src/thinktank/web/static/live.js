@@ -1,4 +1,4 @@
-/* ThinkTank live-table client (DESIGN.md §14.2, §15).
+/* ThinkTank live-table client.
  *
  * One WebSocket per session. The server sends, in order:
  *   hello  -> {"type":"hello","last_seq":N,...}
@@ -181,7 +181,7 @@
     send({ type: "raise_hand" });
   });
 
-  // Approval panel (DESIGN.md §12.3, M6): decide a pending persona change.
+  // Approval panel (M6): decide a pending persona change.
   var approvalPanel = document.getElementById("approvals-panel");
   if (approvalPanel) {
     approvalPanel.addEventListener("click", function (e) {
@@ -207,7 +207,7 @@
     });
   }
 
-  // Control bar: start / pause / resume / stop / reset (DESIGN.md §15).
+  // Control bar: start / pause / resume / stop / reset.
   var controls = document.querySelector(".controls");
   if (controls) {
     controls.addEventListener("click", function (e) {

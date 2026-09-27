@@ -1,4 +1,4 @@
-"""Transcript rendering: agent-colored lines must stay readable (DESIGN §15)."""
+"""Transcript rendering: agent-colored lines must stay readable."""
 
 from __future__ import annotations
 

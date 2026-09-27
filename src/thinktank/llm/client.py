@@ -1,8 +1,8 @@
 """LLM client abstraction.
 
 The engine never calls a provider directly; it depends on the
-:class:`LLMClient` protocol (DESIGN.md §8.5, §3 principle 4). That keeps the
-entire core testable with :class:`thinktank.llm.fake.FakeLLM`, no API calls.
+:class:`LLMClient` protocol. That keeps the entire core testable with
+:class:`thinktank.llm.fake.FakeLLM`, no API calls.
 
 The concrete LiteLLM implementation (``litellm_client.py``) adds tenacity
 retry, a concurrency semaphore, cost accounting and structured-output

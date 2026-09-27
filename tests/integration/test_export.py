@@ -1,4 +1,4 @@
-"""Export tests (DESIGN.md §14.1, M6 acceptance: JSONL export ready for analysis)."""
+"""Export tests (M6 acceptance: JSONL export ready for analysis)."""
 
 from __future__ import annotations
 

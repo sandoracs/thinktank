@@ -1,4 +1,4 @@
-"""Agent-template persistence (DESIGN.md §7 ``agent_templates``, §15 library).
+"""Agent-template persistence (``agent_templates``).
 
 The library is the DB-backed source of agent definitions for the web hub. On
 first start the built-in defaults are seeded; ``POST /api/sessions`` resolves
@@ -133,7 +133,7 @@ async def delete_template(
 
 
 def template_summary(config: AgentConfig) -> dict[str, object]:
-    """JSON-safe view for the persona templates (DESIGN.md §15)."""
+    """JSON-safe view for the persona templates."""
     persona = config.persona
     return {
         "id": config.id,

@@ -1,26 +1,10 @@
 # ThinkTank
 
+[![GitHub repo](https://img.shields.io/badge/GitHub-sandoracs%2Fthinktank-181717?logo=github)](https://github.com/sandoracs/thinktank)
+
 Multi-party debate system where AI agents and humans talk around a virtual table
 on a topic. Everyone hears everyone; agents have three-layer memory and a
-fixed/evolving persona; a web hub configures and follows the session. Single
-machine, SQLite. Full specification in [`DESIGN.md`](DESIGN.md) (Hungarian).
-
-## Status
-
-Milestones **M0–M6** plus the **RemoteAgent** (M7) and the **M3 `reembed`**
-command are implemented and tested (107 tests, ruff + pyright strict clean).
-Token streaming and tool-using agents (remaining M7 scope) are not started.
-
-| Milestone | Scope | Status |
-|---|---|---|
-| M0 | repo, uv, ruff/pyright/pytest, Settings, DB, pragmas, **sqlite-vec load** | done |
-| M1 | domain, events, `SessionEngine`, round-robin, `AIAgent`, LiteLLM/Fake, `thinktank run` | done |
-| M2 | FastAPI hub, WebSocket live feed, human turns, pause/resume/stop, cost cap | done |
-| M3 | memory: episodic/long-term, sqlite-vec + FTS5 + RRF, `EmbeddingProvider` | done |
-| M4 | persona core/state, reflection, LOCKED/BOUNDED/SHADOW, inspector timeline | done |
-| M5 | plugin registry (entry points), schema-driven forms, `HandRaisePriority`, `Bidding` | done |
-| M6 | APPROVED mode + approval panel, JSONL/CSV export, JSON session download, consistency check, persona templates CRUD | done |
-| M7 | RemoteAgent (external HTTP participant); token streaming + tool agents remain | remote agent done |
+fixed/evolving persona; a web hub configures and follows the session.
 
 ## Install
 

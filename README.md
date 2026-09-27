@@ -6,9 +6,10 @@ Multi-party debate system where AI agents and humans talk around a virtual table
 on a topic. Everyone hears everyone; agents have three-layer memory and a
 fixed/evolving persona; a web hub configures and follows the session.
 
-Single machine, SQLite, no external services. Technical detail — features, the
-full HTTP API, advanced settings — lives in
-[`docs/REFERENCE.md`](docs/REFERENCE.md).
+Runs on one machine: SQLite for storage, no broker, queue, or other service to
+stand up — only the LLM provider you point it at (or none at all, with the
+offline FakeLLM or a local Ollama). Technical detail — features, the full HTTP
+API, advanced settings — lives in [`docs/REFERENCE.md`](docs/REFERENCE.md).
 
 ## Deploy
 
@@ -19,7 +20,7 @@ Pick one.
 ```sh
 docker build -t thinktank .
 docker run -d --name thinktank \
-  -p 8080:8080 \
+  -p 127.0.0.1:8080:8080 \
   -v thinktank-data:/app/data \
   -v "$PWD/.env":/app/.env:ro \
   thinktank
@@ -29,6 +30,11 @@ docker run -d --name thinktank \
 Non-root, healthcheck included. The DB lives in the mounted `/app/data` volume,
 and the image contains no secrets (`.env`/`data/` are `.dockerignore`d) — keys
 come from the mounted `.env`.
+
+The image sets `THINKTANK_HOST`, `THINKTANK_PORT`, and `THINKTANK_DATA_DIR` as
+real environment variables, and those beat anything in a mounted `.env` — set
+them with `-e` / `-p` instead. Note the container binds `0.0.0.0`, so read
+[Exposure](#exposure) before publishing the port anywhere but localhost.
 
 ### Source checkout — requires [uv](https://docs.astral.sh/uv/)
 
@@ -64,6 +70,20 @@ Any LiteLLM model string works, per agent or as the default (e.g.
 edits every setting and writes it back to `.env`; extra provider endpoints can
 be registered there too — see
 [advanced configuration](docs/REFERENCE.md#advanced-configuration).
+
+## Exposure
+
+**The hub has no authentication.** Anyone who can reach the port can read every
+session, create and delete them, edit settings (which writes `.env`), register
+provider API keys, and restart the hub. The per-human tokens handed out at
+session creation only decide *which seat* someone speaks from over the
+WebSocket — they are not access control, and `THINKTANK_ADMIN_TOKEN` is
+accepted on the settings page but not currently enforced anywhere.
+
+So: the default `THINKTANK_HOST=127.0.0.1` keeps it on loopback, and that is
+the safe default. The Docker image binds `0.0.0.0` so `-p` works — publish that
+port only to localhost (`-p 127.0.0.1:8080:8080`), a private network you trust,
+or an authenticating reverse proxy in front.
 
 ## Run
 

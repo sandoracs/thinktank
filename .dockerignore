@@ -1,0 +1,27 @@
+# VCS / local state
+.git
+.gitignore
+.DS_Store
+
+# Python artifacts (never ship into the image)
+.venv
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+
+# Local data & secrets — the image must not bake in .env or the DB
+.env
+data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+# Dev-only files
+tests/
+.github/
+uv.lock.tmp

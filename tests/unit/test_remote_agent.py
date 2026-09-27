@@ -12,10 +12,10 @@ import uuid
 import httpx
 import pytest
 
-from roundtable.domain.events import new_message_id
-from roundtable.domain.models import Message, RemoteConfig
-from roundtable.participants.base import TurnContext
-from roundtable.participants.remote import RemoteAgent
+from thinktank.domain.events import new_message_id
+from thinktank.domain.models import Message, RemoteConfig
+from thinktank.participants.base import TurnContext
+from thinktank.participants.remote import RemoteAgent
 
 SESSION_ID = uuid.uuid4()
 

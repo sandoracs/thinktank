@@ -1,62 +1,62 @@
-# Roundtable – tervezési dokumentum (v1)
+# ThinkTank – Design Document (v1)
 
-Többszereplős vitarendszer, ahol AI-agentek és emberek egy virtuális asztalnál beszélgetnek egy témáról. Mindenki hall mindenkit, az agentek memóriával rendelkeznek, a perszónájuk rögzíthető vagy szabályozottan fejlődhet. A rendszert egy webes hub konfigurálja és követi.
-
----
-
-## 1. Célok és nem-célok
-
-**Célok (v1)**
-
-- AI-agentek és emberi résztvevők egyenrangúan, azonos interfészen keresztül vesznek részt.
-- A moderátor lehet ember vagy AI.
-- A szólási sorrend cserélhető pluginként; alapértelmezés: round robin.
-- Agentenként háromrétegű memória (munka, epizodikus, hosszú távú).
-- A perszóna rögzített magból és változtatható állapotból áll; a változás módja agentenként szabályozható.
-- Webes hub: konfiguráció, élő követés, emberi hozzászólás, agent-inspektor.
-- Minden történés eseményként tárolódik: visszajátszható, exportálható kutatási elemzéshez.
-- Egyetlen gépen fut (PC vagy Mac), SQLite-tal.
-
-**Nem-célok (v1)**
-
-- Postgres-támogatás, több felhasználós hozzáférés-kezelés, internetre kitett telepítés.
-- Token-szintű streaming a UI-ba (v2).
-- Hang- vagy videóalapú részvétel.
+A multi-participant discussion system in which AI agents and humans talk about a topic around a virtual table. Everyone hears everyone else, the agents have memory, and their persona can be fixed or allowed to evolve in a controlled way. A web hub configures and monitors the system.
 
 ---
 
-## 2. Technológiai stack
+## 1. Goals and Non-Goals
 
-| Terület | Választás | Megjegyzés |
+**Goals (v1)**
+
+- AI agents and human participants take part on equal terms, through the same interface.
+- The moderator can be a human or an AI.
+- The speaking order is swappable as a plugin; default: round robin.
+- Three-tier memory per agent (working, episodic, long-term).
+- A persona consists of a fixed core and a mutable state; how it may change is configurable per agent.
+- Web hub: configuration, live monitoring, human contributions, agent inspector.
+- Everything that happens is stored as an event: replayable and exportable for research analysis.
+- Runs on a single machine (PC or Mac) with SQLite.
+
+**Non-Goals (v1)**
+
+- Postgres support, multi-user access management, internet-facing deployment.
+- Token-level streaming to the UI (v2).
+- Audio- or video-based participation.
+
+---
+
+## 2. Technology Stack
+
+| Area | Choice | Notes |
 |---|---|---|
-| Nyelv | Python 3.12+ | |
-| Csomag- és környezetkezelés | uv | a Pythont is uv telepítse (lásd 14. kockázatok) |
+| Language | Python 3.12+ | |
+| Package and environment management | uv | let uv install Python as well (see 14, risks) |
 | Web | FastAPI + uvicorn | REST + WebSocket |
-| Sémák | Pydantic v2, pydantic-settings | konfig, események, API |
-| Adatbázis | SQLite, SQLAlchemy 2.0 async + aiosqlite | WAL mód |
-| Migráció | Alembic, `render_as_batch=True` | SQLite oszlopmódosításhoz kell |
-| Vektoros keresés | sqlite-vec | `vec0` virtuális tábla |
-| Teljes szöveges keresés | SQLite FTS5 | hibrid keresés a vektorossal |
-| LLM | LiteLLM (`acompletion`, `aembedding`) | Claude, GPT, Gemini, Ollama egy felületen |
-| Embedding | sentence-transformers vagy Ollama | **többnyelvű** modell a magyar miatt |
-| UI | Jinja2 + HTMX (+ ws extension) | build lépés nélkül |
-| Grafikon | Chart.js, statikus fájlként | drift-idővonal |
+| Schemas | Pydantic v2, pydantic-settings | config, events, API |
+| Database | SQLite, SQLAlchemy 2.0 async + aiosqlite | WAL mode |
+| Migrations | Alembic, `render_as_batch=True` | needed for SQLite column modifications |
+| Vector search | sqlite-vec | `vec0` virtual table |
+| Full-text search | SQLite FTS5 | hybrid search with the vector one |
+| LLM | LiteLLM (`acompletion`, `aembedding`) | Claude, GPT, Gemini, Ollama behind one interface |
+| Embedding | sentence-transformers or Ollama | **multilingual** model for Hungarian |
+| UI | Jinja2 + HTMX (+ ws extension) | no build step |
+| Charts | Chart.js, as static files | drift timeline |
 | Retry | tenacity | |
-| Naplózás | structlog | JSON-napló |
-| Minőség | ruff, pyright strict, pytest + pytest-asyncio, pre-commit | |
+| Logging | structlog | JSON logs |
+| Quality | ruff, pyright strict, pytest + pytest-asyncio, pre-commit | |
 
 ---
 
-## 3. Architektúra
+## 3. Architecture
 
 ```
 ┌──────────────────── Web UI (Jinja2 + HTMX) ────────────────────┐
-│   REST: konfiguráció, vezérlés      WebSocket: élő események   │
+│   REST: configuration, control        WebSocket: live events   │
 └───────────────────────────────┬────────────────────────────────┘
                            FastAPI Hub
      ┌──────────────┬───────────┴──────┬──────────────────┐
  SessionManager  PluginRegistry     EventBus         Repositories
- (futó sessionök) (entry points)   (in-process)      (SQLite)
+ (running sessions) (entry points)   (in-process)     (SQLite)
      │
  SessionEngine ──► TurnStrategy (plugin)
      │
@@ -69,70 +69,70 @@ Többszereplős vitarendszer, ahol AI-agentek és emberek egy virtuális asztaln
      └──► PersonaManager ──► DriftPolicy (plugin), Reflection, ConsistencyCheck
 ```
 
-**Alapelvek**
+**Principles**
 
-1. **Event sourcing.** Az `events` tábla az igazság forrása. A `messages`, `persona_versions` és hasonló táblák ebből képzett projekciók. Az élő UI, az újracsatlakozás, a visszajátszás és az export mind az eseményfolyamra épül.
-2. **Egy interfész minden résztvevőre.** A motor nem tudja, hogy ember vagy AI beszél.
-3. **Minden cserélhető rész plugin**, ugyanazzal a regisztrációs mechanizmussal, a beépítetteket is beleértve.
-4. **Az LLM-hívás injektált függőség** (`LLMClient` protokoll), így a mag teljes egészében tesztelhető `FakeLLM`-mel, API-hívás nélkül.
+1. **Event sourcing.** The `events` table is the source of truth. The `messages`, `persona_versions`, and similar tables are projections derived from it. The live UI, reconnection, replay, and export all build on the event stream.
+2. **One interface for every participant.** The engine does not know whether it is a human or an AI that is speaking.
+3. **Everything swappable is a plugin**, including the built-ins, all with the same registration mechanism.
+4. **The LLM call is an injected dependency** (`LLMClient` protocol), so the core is fully testable with a `FakeLLM`, without any API calls.
 
 ---
 
-## 4. Könyvtárszerkezet
+## 4. Directory Structure
 
 ```
-roundtable/
+thinktank/
 ├── pyproject.toml
 ├── alembic.ini
 ├── .env.example
 ├── migrations/
-├── templates/                   # mentett session- és agent-sablonok (YAML)
+├── templates/                   # saved session- and agent-templates (YAML)
 │   ├── agents/
 │   └── sessions/
-├── src/roundtable/
+├── src/thinktank/
 │   ├── config.py                # Settings (pydantic-settings)
-│   ├── cli.py                   # roundtable run / serve / export / reembed
+│   ├── cli.py                   # thinktank run / serve / export / reembed
 │   ├── domain/
 │   │   ├── models.py            # AgentConfig, PersonaCore, PersonaState, SessionConfig, Message
-│   │   └── events.py            # eseménytípusok
+│   │   └── events.py            # event types
 │   ├── core/
 │   │   ├── engine.py            # SessionEngine
-│   │   ├── manager.py           # SessionManager (több session, életciklus)
-│   │   ├── state.py             # SessionState + projekció eseményekből
-│   │   ├── context.py           # ContextBuilder, tokenkeret
-│   │   └── bus.py               # EventBus (pub/sub, WS felé)
+│   │   ├── manager.py           # SessionManager (multiple sessions, lifecycle)
+│   │   ├── state.py             # SessionState + projection from events
+│   │   ├── context.py           # ContextBuilder, token budget
+│   │   └── bus.py               # EventBus (pub/sub, toward WS)
 │   ├── participants/
-│   │   ├── base.py              # Participant protokoll
+│   │   ├── base.py              # Participant protocol
 │   │   ├── ai_agent.py
 │   │   ├── human.py
-│   │   └── remote.py            # HTTP-n csatlakozó külső agent (v1 vége / v2)
+│   │   └── remote.py            # external agent connecting over HTTP (end of v1 / v2)
 │   ├── strategies/
 │   │   ├── base.py              # TurnStrategy ABC
 │   │   ├── round_robin.py
-│   │   └── hand_raise.py        # wrapper: jelentkezés elsőbbsége bármely stratégián
+│   │   └── hand_raise.py        # wrapper: hand-raising priority on top of any strategy
 │   ├── memory/
 │   │   ├── base.py              # MemoryBackend ABC
-│   │   ├── sqlite_memory.py     # sqlite-vec + FTS5, RRF-fúzió
+│   │   ├── sqlite_memory.py     # sqlite-vec + FTS5, RRF fusion
 │   │   ├── embeddings.py        # EmbeddingProvider
-│   │   └── summarizer.py        # epizodikus összefoglalók
+│   │   └── summarizer.py        # episodic summaries
 │   ├── persona/
 │   │   ├── manager.py
 │   │   ├── policies.py          # LOCKED, BOUNDED, APPROVED, FREE
 │   │   ├── reflection.py
 │   │   └── consistency.py
 │   ├── llm/
-│   │   ├── client.py            # LiteLLM wrapper: retry, timeout, költség, szemafor
-│   │   ├── fake.py              # FakeLLM tesztekhez
-│   │   └── prompts/             # Jinja2 promptsablonok
+│   │   ├── client.py            # LiteLLM wrapper: retry, timeout, cost, semaphore
+│   │   ├── fake.py              # FakeLLM for tests
+│   │   └── prompts/             # Jinja2 prompt templates
 │   ├── plugins/
 │   │   └── registry.py
 │   ├── storage/
-│   │   ├── db.py                # engine, pragmák, sqlite-vec betöltés
-│   │   ├── tables.py            # ORM-modellek
+│   │   ├── db.py                # engine, pragmas, loading sqlite-vec
+│   │   ├── tables.py            # ORM models
 │   │   └── repositories.py
 │   ├── api/
 │   │   ├── app.py
-│   │   ├── routes_library.py    # agent- és session-sablonok
+│   │   ├── routes_library.py    # agent and session templates
 │   │   ├── routes_sessions.py
 │   │   ├── routes_plugins.py
 │   │   ├── ws.py
@@ -143,70 +143,70 @@ roundtable/
 └── tests/
     ├── unit/
     ├── integration/
-    └── live/                    # valódi API-hívás, alapból kihagyva
+    └── live/                    # real API calls, skipped by default
 ```
 
 ---
 
-## 5. Domain modell
+## 5. Domain Model
 
-### 5.1 Perszóna
+### 5.1 Persona
 
 ```python
 class PersonaCore(BaseModel, frozen=True):
-    """Soha nem változik a session alatt."""
+    """Never changes during a session."""
     name: str
-    role: str                          # pl. "szkeptikus módszertanász"
+    role: str                          # e.g. "skeptical methodologist"
     expertise: list[str]
     values: list[str]
-    communication_style: str           # pl. "tömör, kérdez vissza, példákat hoz"
+    communication_style: str           # e.g. "concise, asks back, gives examples"
     temperament: str
     background: str = ""
-    boundaries: list[str] = []         # amit sosem tesz/mond
+    boundaries: list[str] = []         # things it never does/says
 
 class Stance(BaseModel):
-    position: str                      # szöveges álláspont
+    position: str                      # textual stance
     confidence: float = Field(ge=0, le=1)
 
 class PersonaState(BaseModel):
-    """A drift policy szerint változhat."""
-    stances: dict[str, Stance] = {}    # kulcs: a session egy vitakérdésének id-je
-    attitudes: dict[str, float] = {}   # résztvevő id -> bizalom (-1..1)
-    mood: str = "semleges"
+    """May change per the drift policy."""
+    stances: dict[str, Stance] = {}    # key: id of one of the session's debate questions
+    attitudes: dict[str, float] = {}   # participant id -> trust (-1..1)
+    mood: str = "neutral"
 ```
 
-### 5.2 Drift policy
+### 5.2 Drift Policy
 
 ```python
 class DriftMode(StrEnum):
-    LOCKED = "locked"      # állapot sem változhat
-    BOUNDED = "bounded"    # változhat, lépésköz-korláttal
-    APPROVED = "approved"  # javaslat → ember/moderátor jóváhagyja
-    FREE = "free"          # szabad; a mag ekkor is védett
+    LOCKED = "locked"      # state must not change
+    BOUNDED = "bounded"    # may change, with a step-size limit
+    APPROVED = "approved"  # proposal -> approved by a human/moderator
+    FREE = "free"          # free; the core is still protected
 
 class DriftConfig(BaseModel):
     mode: DriftMode = DriftMode.LOCKED
-    max_confidence_delta: float = 0.2     # BOUNDED: körönként
+    max_confidence_delta: float = 0.2     # BOUNDED: per round
     max_attitude_delta: float = 0.3
     max_stance_changes_per_round: int = 1
-    shadow_reflection: bool = False       # LOCKED mellett is lefut a reflexió, csak nem alkalmazzuk
+    shadow_reflection: bool = False       # reflection runs even under LOCKED, just not applied
 ```
 
-A `shadow_reflection` kutatási célú: méri, mekkora „nyomás” éri a rögzített perszónát, anélkül hogy engedne neki.
+`shadow_reflection` is for research purposes: it measures what "pressure" a fixed persona is under without yielding to it.
 
-### 5.3 Agent és session konfiguráció
+### 5.3 Agent and Session Configuration
 
 ```python
 class MemoryConfig(BaseModel):
-    working_window: int = 12           # utolsó N üzenet szó szerint
-    summarize_every: int = 8           # ennyi új üzenetenként epizodikus összefoglaló
+    working_window: int = 12           # last N messages verbatim
+    summarize_every: int = 8           # new-message count per episodic summary
     retrieval_k: int = 5
-    long_term: bool = True             # sessionök közti memória
+    long_term: bool = True             # memory across sessions
 
 class AgentConfig(BaseModel):
-    id: str                            # sablon-azonosító = hosszú távú identitás
-    type: str = "llm"                  # participant plugin neve
-    model: str                         # LiteLLM modellstring
+    id: str                            # template id = long-term identity
+    type: str = "llm"                  # name of the participant plugin
+    model: str                         # LiteLLM model string
     temperature: float = 0.8
     max_tokens: int = 600
     persona: PersonaCore
@@ -214,11 +214,11 @@ class AgentConfig(BaseModel):
     drift: DriftConfig = DriftConfig()
     memory: MemoryConfig = MemoryConfig()
     consistency_check: bool = False
-    carry_over_state: bool = False     # perszóna-állapot átvitele a következő sessionbe
+    carry_over_state: bool = False     # carry persona state into the next session
 
 class DebateQuestion(BaseModel):
-    id: str                            # pl. "q_authorship"
-    text: str                          # pl. "Lehet-e egy LLM társszerző?"
+    id: str                            # e.g. "q_authorship"
+    text: str                          # e.g. "Can an LLM be a co-author?"
 
 class StrategyRef(BaseModel):
     name: str = "round_robin"
@@ -232,19 +232,19 @@ class StopConditions(BaseModel):
 
 class SessionConfig(BaseModel):
     title: str
-    topic: str                         # a moderátor nyitó felvetése / kutatási terület
-    questions: list[DebateQuestion]    # ezek mentén mérjük az álláspontokat
-    participants: list[ParticipantRef] # agent-sablon id vagy ember (név)
-    moderator: str | None              # résztvevő id, vagy None
+    topic: str                         # the moderator's opening framing / research area
+    questions: list[DebateQuestion]    # stances are measured along these
+    participants: list[ParticipantRef] # agent template id or human (name)
+    moderator: str | None              # participant id, or None
     strategy: StrategyRef = StrategyRef()
     stop: StopConditions = StopConditions()
     reflection_every_rounds: int = 1
-    language: str = "hu"
+    language: str = "en"
 ```
 
-**Miért kellenek a `questions`?** Ha az álláspontok előre definiált kérdésekhez kötődnek, a drift mérhető és összehasonlítható: minden kérdésre, minden agentre, minden körben van egy `position` és egy `confidence`. Szabad szöveges „véleményváltozásból” ez nem nyerhető ki megbízhatóan.
+**Why do we need `questions`?** When stances are tied to predefined questions, drift is measurable and comparable: for every question, every agent, every round there is a `position` and a `confidence`. Free-text "opinion change" does not yield this reliably.
 
-### 5.4 Üzenet
+### 5.4 Message
 
 ```python
 class Message(BaseModel):
@@ -255,40 +255,40 @@ class Message(BaseModel):
     kind: Literal["speech", "moderator", "system"]
     content: str
     reply_to: UUID | None = None
-    meta: dict[str, Any] = {}          # modell, tokenek, költség, késleltetés
+    meta: dict[str, Any] = {}          # model, tokens, cost, latency
 ```
 
 ---
 
-## 6. Események
+## 6. Events
 
-Minden esemény: `session_id`, `seq` (sessionön belül szigorúan növekvő, az alkalmazás osztja ki), `type`, `payload` (JSON), `created_at` (UTC).
+Every event: `session_id`, `seq` (strictly increasing within the session, allocated by the application), `type`, `payload` (JSON), `created_at` (UTC).
 
-| Esemény | Payload lényege |
+| Event | Payload essentials |
 |---|---|
-| `SessionCreated` | teljes `SessionConfig` pillanatképe |
+| `SessionCreated` | full `SessionConfig` snapshot |
 | `SessionStarted` / `Paused` / `Resumed` | |
-| `SessionEnded` | ok: `max_rounds`, `cost_limit`, `moderator_closed`, `manual`, `error` |
-| `RoundStarted` / `RoundEnded` | körszám |
-| `TurnAssigned` | beszélő, stratégia neve, indoklás (ha van) |
+| `SessionEnded` | reason: `max_rounds`, `cost_limit`, `moderator_closed`, `manual`, `error` |
+| `RoundStarted` / `RoundEnded` | round number |
+| `TurnAssigned` | speaker, strategy name, rationale (if any) |
 | `MessagePosted` | `Message` |
-| `TurnSkipped` | ok: `human_timeout`, `passed`, `error` |
-| `HandRaised` / `HandLowered` | résztvevő |
-| `ModeratorIntervened` | soron kívüli moderátori üzenet |
-| `LLMCallCompleted` | modell, célja (`speech`, `summary`, `reflection`, `judge`), tokenek, költség, ms |
-| `MemoryWritten` | agent, réteg, memória-elem id |
-| `ReflectionProposed` | agent, javasolt `StanceUpdate`-ek, `shadow` jelző |
-| `PersonaUpdated` | agent, új állapot verziószáma, alkalmazott változások, ki hatására |
-| `PersonaUpdateRejected` / `Clamped` | agent, ok, eredeti és módosított érték |
-| `ApprovalRequested` / `ApprovalDecided` | APPROVED módhoz |
-| `ConsistencyViolation` | agent, bírói pontszám, indoklás, újragenerálás történt-e |
-| `Error` | komponens, üzenet |
+| `TurnSkipped` | reason: `human_timeout`, `passed`, `error` |
+| `HandRaised` / `HandLowered` | participant |
+| `ModeratorIntervened` | out-of-turn moderator message |
+| `LLMCallCompleted` | model, purpose (`speech`, `summary`, `reflection`, `judge`), tokens, cost, ms |
+| `MemoryWritten` | agent, layer, memory item id |
+| `ReflectionProposed` | agent, proposed `StanceUpdate`s, `shadow` flag |
+| `PersonaUpdated` | agent, version of the new state, applied changes, what it was triggered by |
+| `PersonaUpdateRejected` / `Clamped` | agent, reason, original and modified value |
+| `ApprovalRequested` / `ApprovalDecided` | for APPROVED mode |
+| `ConsistencyViolation` | agent, judge score, rationale, whether regeneration happened |
+| `Error` | component, message |
 
-A `SessionCreated` a teljes konfig pillanatképét tartalmazza, így egy régi session akkor is pontosan visszajátszható, ha közben a sablont módosítottad.
+`SessionCreated` contains a full snapshot of the config, so an old session can be replayed exactly even if the template has been modified in the meantime.
 
 ---
 
-## 7. Adatbázisséma
+## 7. Database Schema
 
 ```
 agent_templates(id PK, config JSON, created_at, updated_at)
@@ -300,9 +300,9 @@ sessions(id PK, title, status, config JSON, created_at, ended_at)
 events(id PK autoincrement, session_id FK, seq INT, type TEXT, payload JSON, created_at)
    UNIQUE(session_id, seq), INDEX(session_id, type)
 
--- projekciók
+-- projections
 messages(id PK, session_id, seq, speaker_id, kind, content, reply_to, meta JSON, created_at)
-messages_fts   -- FTS5 virtuális tábla (content), content=messages
+messages_fts   -- FTS5 virtual table (content), content=messages
 
 persona_versions(agent_id, session_id, version, state JSON, cause_seq, created_at)
    PK(agent_id, session_id, version)
@@ -315,20 +315,20 @@ memory_fts     -- FTS5(content), content=memory_items
 
 pending_approvals(id PK, session_id, agent_id, proposal JSON, status, created_at, decided_at)
 
-app_meta(key PK, value)   -- pl. embedding_model, embedding_dim
+app_meta(key PK, value)   -- e.g. embedding_model, embedding_dim
 ```
 
-**Megjegyzések**
+**Notes**
 
-- A memória `agent_id` szerint szűrve kerül lekérdezésre: egy agent csak a saját emlékeit látja.
-- A hosszú távú memória `agent_id` = az agent-sablon id-je, így sessionökön átível. Az epizodikus memória session-szintű.
-- Az `app_meta` tárolja az embedding-modell nevét és dimenzióját. Ha a konfigban más modell szerepel, a hub induláskor hibát jelez, és a `roundtable reembed` parancs újraszámolja a vektorokat.
-- FTS5 tokenizer: `unicode61`. A `remove_diacritics` beállítást magyar szövegen érdemes kipróbálni mindkét értékkel; a magyarban az ékezet jelentést hordoz (kör/kór), ezért alapból **ne** távolítsd el. Szótövezés nincs, ezt a vektoros ág kompenzálja.
-- Pragmák kapcsolódáskor: `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, majd a sqlite-vec betöltése.
+- Memory is queried filtered by `agent_id`: an agent only sees its own memories.
+- Long-term memory has `agent_id` = the agent template id, so it spans sessions. Episodic memory is session-scoped.
+- `app_meta` stores the embedding model name and dimension. If the config names a different model, the hub errors at startup, and the `thinktank reembed` command recomputes the vectors.
+- FTS5 tokenizer: `unicode61`. For Hungarian text it is worth trying `remove_diacritics` with both values; in Hungarian diacritics carry meaning (kör/kór), so do **not** remove them by default. No stemming; the vector branch compensates for that.
+- Pragmas at connection time: `journal_mode=WAL`, `foreign_keys=ON`, `busy_timeout=5000`, then load sqlite-vec.
 
 ---
 
-## 8. Fő interfészek
+## 8. Main Interfaces
 
 ### 8.1 Participant
 
@@ -336,43 +336,43 @@ app_meta(key PK, value)   -- pl. embedding_model, embedding_dim
 class TurnContext(BaseModel):
     session_id: UUID
     round: int
-    turn_instruction: str | None = None   # pl. moderátori felkérés
+    turn_instruction: str | None = None   # e.g. a moderator request
 
 class Participant(Protocol):
     id: str
     kind: Literal["ai", "human", "remote"]
     display_name: str
 
-    async def speak(self, ctx: TurnContext) -> Message | None: ...   # None = passzol / timeout
-    async def observe(self, msg: Message) -> None: ...                # minden üzenetet megkap
-    async def on_session_end(self) -> None: ...                       # pl. hosszú távú tanulságok
+    async def speak(self, ctx: TurnContext) -> Message | None: ...   # None = pass / timeout
+    async def observe(self, msg: Message) -> None: ...                # receives every message
+    async def on_session_end(self) -> None: ...                       # e.g. long-term takeaways
 ```
 
-- **AIAgent**: `speak()` → ContextBuilder → LLMClient → (opcionális konzisztencia-ellenőrzés) → Message. `observe()` → munkamemória frissül; ha elérte a `summarize_every` küszöböt, epizodikus összefoglalót készít.
-- **HumanParticipant**: `speak()` egy `asyncio.Future`-re vár, amit a WebSocket-bemenet old fel; `human_timeout_s` után `None`, és `TurnSkipped(human_timeout)` esemény keletkezik. A `observe()` nem csinál semmit (a UI az eseménybuszról kapja az üzeneteket).
-- **RemoteAgent** (plugin, v1 vége): HTTP POST egy külső végpontra a kontextussal, a válasz a Message. Így AG2-, LangGraph- vagy bármilyen más agent is leülhet az asztalhoz. Protokoll: `POST {url}/speak` → `{"content": "..."}`, `POST {url}/observe`.
+- **AIAgent**: `speak()` → ContextBuilder → LLMClient → (optional consistency check) → Message. `observe()` → working memory is updated; when the `summarize_every` threshold is reached, it produces an episodic summary.
+- **HumanParticipant**: `speak()` awaits an `asyncio.Future` released by WebSocket input; after `human_timeout_s` it returns `None` and a `TurnSkipped(human_timeout)` event is emitted. `observe()` does nothing (the UI gets the messages from the event bus).
+- **RemoteAgent** (plugin, end of v1): an HTTP POST to an external endpoint with the context; the response is the Message. This lets an AG2, LangGraph, or any other agent sit at the table. Protocol: `POST {url}/speak` → `{"content": "..."}`, `POST {url}/observe`.
 
 ### 8.2 TurnStrategy
 
 ```python
 class TurnStrategy(ABC):
     name: ClassVar[str]
-    Params: ClassVar[type[BaseModel]] = EmptyParams   # a UI ebből generál űrlapot
+    Params: ClassVar[type[BaseModel]] = EmptyParams   # the UI generates a form from this
 
     def __init__(self, params: BaseModel) -> None: ...
 
     @abstractmethod
     async def next_speaker(self, state: SessionState) -> str | None: ...
 
-    async def on_event(self, event: Event) -> None:  # opcionális
+    async def on_event(self, event: Event) -> None:  # optional
         pass
 ```
 
-- **RoundRobin** (beépített): fix sorrend a résztvevőlistából, moderátor nélkül; paraméter: `shuffle_each_round: bool`.
-- **HandRaisePriority** (wrapper): bármely stratégiát becsomagol; ha van jelentkező, ő következik, egyébként a belső stratégia dönt. Így a jelentkezés nem stratégiafüggő.
-- Később: **ModeratorPicks** (a moderátor LLM strukturált kimenettel választ), **Bidding** (minden AI-agent egy olcsó hívással 0–1 pontszámot ad, a legmagasabb szól; holtverseny esetén az, aki régebben beszélt).
+- **RoundRobin** (built-in): a fixed order from the participant list, no moderator; parameter: `shuffle_each_round: bool`.
+- **HandRaisePriority** (wrapper): wraps any strategy; if someone has raised their hand, they speak next; otherwise the inner strategy decides. This makes hand-raising strategy-independent.
+- Later: **ModeratorPicks** (the moderator's LLM picks with structured output), **Bidding** (every AI agent gives a 0–1 score with a cheap call, the highest speaks; on a tie, whoever spoke longest ago).
 
-A „kör” fogalmát a stratégia definiálja: a `SessionState.round_complete` jelzőt a stratégia állítja. Round robinnál ez triviális; bidding esetén pl. „N üzenet = egy kör”.
+The strategy defines the concept of a "round": the `SessionState.round_complete` flag is set by the strategy. With round robin this is trivial; with bidding, e.g., "N messages = one round".
 
 ### 8.3 MemoryBackend
 
@@ -409,18 +409,18 @@ class LLMClient(Protocol):
     async def embed(self, texts: list[str]) -> list[list[float]]: ...
 ```
 
-A LiteLLM-implementáció feladata: tenacity-retry (rate limit, 5xx, timeout), szolgáltatónkénti `asyncio.Semaphore`, költségszámítás (`litellm.completion_cost`), `LLMCallCompleted` esemény kibocsátása. Strukturált kimenetnél először natív `response_format`, ha a modell nem támogatja: JSON-kinyerés + Pydantic-validáció + egy újrapróbálás a hibaüzenettel.
+The LiteLLM implementation is responsible for: tenacity retry (rate limit, 5xx, timeout), a per-provider `asyncio.Semaphore`, cost accounting (`litellm.completion_cost`), and emitting the `LLMCallCompleted` event. For structured output, try native `response_format` first; if the model does not support it: JSON extraction + Pydantic validation + one retry with the error message.
 
 ---
 
 ## 9. SessionEngine
 
-### 9.1 Fő ciklus
+### 9.1 Main Loop
 
 ```python
 async def run(self) -> None:
     await self.emit(SessionStarted())
-    await self.moderator_open()                       # ha van moderátor: nyitó felvetés
+    await self.moderator_open()                       # if there is a moderator: opening framing
     while not await self.should_stop():
         await self.pause_gate.wait()                  # pause/resume
         speaker_id = await self.strategy.next_speaker(self.state)
@@ -431,81 +431,81 @@ async def run(self) -> None:
         if msg is None:
             await self.emit(TurnSkipped(speaker_id=speaker_id, reason=...))
         else:
-            await self.post(msg)                      # MessagePosted + observe() mindenkinek
+            await self.post(msg)                      # MessagePosted + observe() for everyone
         if self.state.round_complete:
-            await self.end_round()                    # RoundEnded, reflexió, moderátori összegzés
+            await self.end_round()                    # RoundEnded, reflection, moderator summary
     await self.moderator_close()
-    await self.finish()                               # on_session_end() mindenkinek, SessionEnded
+    await self.finish()                               # on_session_end() for everyone, SessionEnded
 ```
 
-### 9.2 Részletek
+### 9.2 Details
 
-- **observe() szétterítése:** `asyncio.gather` az összes résztvevőre, és a következő kör csak ezután indul. Egyszerű és determinisztikus. Ha az embedding lassúvá teszi, v2-ben agentenkénti sorra lehet váltani, azzal a feltétellel, hogy egy agent saját `speak()`-je előtt a saját sora kiürül.
-- **Moderátor:** szerep, nem külön típus. Megszólal nyitáskor, körvégén (opcionálisan, `moderator_every_rounds`), záráskor. Emberi moderátor bármikor beszúrhat `ModeratorIntervened` üzenetet; ez a következő kör előtt minden agent kontextusába bekerül.
-- **Leállási feltételek:** `max_rounds`, `max_messages`, `max_cost_usd` (az `LLMCallCompleted` események összege), `max_duration_s`, moderátori zárás, kézi leállítás.
-- **Hibakezelés:** ha egy agent LLM-hívása a retry-k után is elbukik, `Error` + `TurnSkipped(error)` esemény, és a vita folytatódik. Egymás után 3 hiba ugyanattól az agenttől: az agent kimarad a session hátralévő részéből (`ParticipantDisabled`).
-- **Összeomlás utáni helyreállítás:** induláskor a `running` állapotú sessionök `interrupted` lesznek. Folytatáskor a `SessionState` az események visszajátszásából épül újra (ugyanaz a projekciós kód, mint az élő futásnál), és a ciklus a következő fordulótól indul.
+- **Fanning out observe():** `asyncio.gather` over all participants, and the next round starts only after that. Simple and deterministic. If embedding becomes the bottleneck, v2 could switch to per-agent queues, provided an agent's own queue drains before its own `speak()`.
+- **Moderator:** a role, not a separate type. Speaks at the opening, at round ends (optionally, `moderator_every_rounds`), and at the close. A human moderator can insert a `ModeratorIntervened` message at any time; it enters every agent's context before the next round.
+- **Stop conditions:** `max_rounds`, `max_messages`, `max_cost_usd` (sum of the `LLMCallCompleted` events), `max_duration_s`, moderator close, manual stop.
+- **Error handling:** if an agent's LLM call still fails after the retries, an `Error` + `TurnSkipped(error)` event, and the debate continues. 3 consecutive errors from the same agent: the agent drops out of the rest of the session (`ParticipantDisabled`).
+- **Recovery after a crash:** at startup, `running` sessions become `interrupted`. On resume, the `SessionState` is rebuilt by replaying the events (the same projection code as in the live run), and the loop starts from the next turn.
 
 ---
 
-## 10. Kontextus-összeállítás (AI-agent)
+## 10. Context Assembly (AI Agent)
 
-Egy hívás üzenetei, ebben a sorrendben:
+The messages of one call, in this order:
 
 1. **System**
-   - A perszóna **mag** renderelve (minden hívásnál újra).
-   - Viselkedési szabályok: saját nevedben beszélj, reagálj konkrétan mások érveire név szerint, ne beszélj más nevében, tartsd a hosszkeretet, ne ismételd a korábbi saját érveidet.
-   - A résztvevők listája egy-egy soros leírással.
-   - A téma és a vitakérdések.
-   - A perszóna **aktuális állapota** (álláspontok + bizonyosság, attitűdök).
-2. **Emlékek** (system-kiegészítésként vagy külön blokkban): hibrid kereséssel lekért epizodikus és hosszú távú elemek.
-3. **Saját epizodikus összefoglaló** a korábbi szakaszról.
-4. **Munkamemória:** az utolsó `working_window` üzenet.
-   - Mások üzenetei `user` szerepben, `[Név]: ...` előtaggal; a saját korábbi üzenetei `assistant` szerepben. Egymást követő `user` üzeneteket egyetlen üzenetbe kell összevonni, mert több szolgáltató nem fogad el azonos szerepű egymás utáni üzeneteket.
-5. **Fordulóutasítás:** „Te következel. …” + az esetleges moderátori felkérés.
+   - The persona **core**, rendered (again on every call).
+   - Behavior rules: speak in your own name, respond concretely to others' arguments by name, do not speak in someone else's name, keep within the length limit, do not repeat your own earlier arguments.
+   - The list of participants with a one-line description each.
+   - The topic and the debate questions.
+   - The persona's **current state** (stances + confidence, attitudes).
+2. **Memories** (as a system supplement or a separate block): episodic and long-term items retrieved by hybrid search.
+3. **Own episodic summary** of the earlier segment.
+4. **Working memory:** the last `working_window` messages.
+   - Others' messages in the `user` role, prefixed with `[Name]: ...`; own earlier messages in the `assistant` role. Consecutive `user` messages must be merged into a single message, because several providers do not accept consecutive same-role messages.
+5. **Turn instruction:** "You are next. …" + any moderator request.
 
-**Tokenkeret:** szakaszonkénti keret (pl. system 1500, emlékek 1000, összefoglaló 600, munkamemória a maradék). Túllépéskor a vágási sorrend: emlékek → munkamemória legrégebbi elemei → összefoglaló. A mag és az állapot sosem vágható. Tokenszámláshoz `litellm.token_counter`.
+**Token budget:** per-section budgets (e.g., system 1500, memories 1000, summary 600, working memory takes the rest). When over, the cut order is: memories → oldest working memory items → summary. The core and the state are never cut. Use `litellm.token_counter` for token counting.
 
-**Nyelv:** a promptsablonok nyelve konfigurálható. Érdemes összehasonlítani: angol nyelvű utasítás + „válaszolj magyarul” vs. teljesen magyar prompt (a perszóna-stabilitás modellenként eltérhet).
+**Language:** the language of the prompt templates is configurable. Worth comparing: English instructions + "respond in Hungarian" vs. a fully Hungarian prompt (persona stability can differ per model).
 
 ---
 
-## 11. Memória
+## 11. Memory
 
-| Réteg | Tartalom | Keletkezés | Hatókör |
+| Layer | Content | Origin | Scope |
 |---|---|---|---|
-| Munkamemória | utolsó N üzenet szó szerint | a `messages` projekcióból, nincs külön tárolás | session |
-| Epizodikus | az agent **saját nézőpontú** összefoglalója: mit hallott, mi győzte meg, mivel nem ért egyet | `summarize_every` üzenetenként, olcsóbb modellel is mehet | session |
-| Hosszú távú | tanulságok, fontos felismerések, kapcsolatok más agentekkel | session végén `on_session_end()` | agent-sablon, sessionökön át |
+| Working memory | last N messages verbatim | from the `messages` projection, no separate storage | session |
+| Episodic | the agent's **own-perspective** summary: what it heard, what convinced it, what it disagrees with | every `summarize_every` messages, may use a cheaper model | session |
+| Long-term | takeaways, important insights, connections to other agents | `on_session_end()` at the end of the session | agent template, across sessions |
 
-**Hibrid keresés:** a lekérdezés a téma + az utolsó 1–2 üzenet. Vektoros top-k (sqlite-vec) és FTS5 BM25 top-k, összefésülés **Reciprocal Rank Fusion**-nel (`score = Σ 1/(60 + rank)`), opcionális frissességi súllyal. Szűrés mindig `agent_id` szerint.
+**Hybrid search:** the query is the topic + the last 1–2 messages. Vector top-k (sqlite-vec) and FTS5 BM25 top-k, merged with **Reciprocal Rank Fusion** (`score = Σ 1/(60 + rank)`), optional recency weighting. Always filter by `agent_id`.
 
-**Embedding:** `EmbeddingProvider` interfész, két beépített implementációval:
-- `sentence_transformers`: lokális, pl. `paraphrase-multilingual-MiniLM-L12-v2` (gyors) vagy `BAAI/bge-m3` (jobb, nagyobb). Macen MPS-gyorsítással.
-- `litellm`: Ollama vagy API-s embedding.
+**Embedding:** `EmbeddingProvider` interface, two built-in implementations:
+- `sentence_transformers`: local, e.g., `paraphrase-multilingual-MiniLM-L12-v2` (fast) or `BAAI/bge-m3` (better, larger). MPS acceleration on Mac.
+- `litellm`: Ollama or API-based embedding.
 
-Magyar nyelvű vitákhoz csak többnyelvű modellt érdemes használni.
+For Hungarian-language debates, only multilingual models are worth using.
 
 ---
 
-## 12. Perszóna-kezelés
+## 12. Persona Management
 
-### 12.1 Stabilitás
+### 12.1 Stability
 
-- A mag minden hívásnál a system prompt elején szerepel.
-- A reflexió sémája **csak `PersonaState` mezőket** tartalmaz, így a mag típusszinten sem módosítható.
-- **Konzisztencia-ellenőrzés** (agentenként kapcsolható): egy bíramodell megkapja a magot és a jelölt választ, 1–5 pontszámot és indoklást ad. Küszöb alatt egyszeri újragenerálás a bíró visszajelzésével; mindkét esetben `ConsistencyViolation` esemény. Költséges, ezért alapból kikapcsolt.
+- The core appears at the top of the system prompt on every call.
+- The reflection schema contains **only `PersonaState` fields**, so the core is not modifiable even at the type level.
+- **Consistency check** (toggleable per agent): a judge model receives the core and the candidate answer, and returns a 1–5 score and a rationale. Below the threshold, one regeneration with the judge's feedback; a `ConsistencyViolation` event in both cases. Expensive, so off by default.
 
-### 12.2 Reflexió
+### 12.2 Reflection
 
-Minden `reflection_every_rounds` kör végén, minden olyan agentre, ahol a mód nem LOCKED (vagy ahol `shadow_reflection` be van kapcsolva):
+At the end of every `reflection_every_rounds` rounds, for every agent whose mode is not LOCKED (or where `shadow_reflection` is enabled):
 
 ```python
 class StanceUpdate(BaseModel):
     question_id: str
     new_position: str
     new_confidence: float = Field(ge=0, le=1)
-    influenced_by: list[str]          # résztvevő id-k
+    influenced_by: list[str]          # participant ids
     reason: str
 
 class AttitudeUpdate(BaseModel):
@@ -519,41 +519,41 @@ class ReflectionResult(BaseModel):
     mood: str | None = None
 ```
 
-A reflexiós prompt kifejezetten megengedi, sőt elvárja, hogy „nincs változás” legyen a válasz, ha semmi nem győzte meg az agentet. Ez csökkenti a mesterséges konvergenciát.
+The reflection prompt explicitly allows, even expects, "no change" as the answer when nothing has convinced the agent. This reduces artificial convergence.
 
-### 12.3 Policy-alkalmazás
+### 12.3 Policy Application
 
-| Mód | Viselkedés |
+| Mode | Behavior |
 |---|---|
-| LOCKED | elutasít; shadow módban `ReflectionProposed(shadow=True)` naplózódik |
-| BOUNDED | `confidence` és `attitude` változás levágva a maximumra; legfeljebb `max_stance_changes_per_round` álláspont változhat; `Clamped` esemény |
-| APPROVED | `pending_approvals` + `ApprovalRequested`; a UI-ban jóváhagyás/elutasítás; addig a régi állapot érvényes, a vita nem áll meg |
-| FREE | alkalmaz |
+| LOCKED | reject; in shadow mode `ReflectionProposed(shadow=True)` is logged |
+| BOUNDED | `confidence` and `attitude` changes are clamped to the maximum; at most `max_stance_changes_per_round` stances may change; `Clamped` event |
+| APPROVED | `pending_approvals` + `ApprovalRequested`; approve/reject in the UI; until then the old state is in effect, the debate does not stop |
+| FREE | apply |
 
-Minden alkalmazott változás új `persona_versions` sor + `PersonaUpdated` esemény, az `influenced_by` mezővel. Ebből rajzolható ki az agent-inspektor drift-idővonala, és ebből készül a hatásgráf (ki kinek a véleményét mozdította el).
+Every applied change is a new `persona_versions` row + a `PersonaUpdated` event with the `influenced_by` field. From this the agent inspector's drift timeline can be drawn, and this is what the influence graph (who moved whose opinion) is built from.
 
 ---
 
-## 13. Pluginrendszer
+## 13. Plugin System
 
-**Entry point csoportok**
+**Entry point groups**
 
-| Csoport | Alaposztály |
+| Group | Base class |
 |---|---|
-| `roundtable.turn_strategies` | `TurnStrategy` |
-| `roundtable.participants` | `Participant`-factory (AI-agenttípusok, RemoteAgent) |
-| `roundtable.memory_backends` | `MemoryBackend` |
-| `roundtable.drift_policies` | `DriftPolicy` |
-| `roundtable.embedding_providers` | `EmbeddingProvider` |
+| `thinktank.turn_strategies` | `TurnStrategy` |
+| `thinktank.participants` | `Participant` factory (AI agent types, RemoteAgent) |
+| `thinktank.memory_backends` | `MemoryBackend` |
+| `thinktank.drift_policies` | `DriftPolicy` |
+| `thinktank.embedding_providers` | `EmbeddingProvider` |
 
-A beépített implementációk is a saját `pyproject.toml`-ban vannak regisztrálva, így ugyanazon az úton töltődnek be, mint a külsők:
+The built-in implementations are also registered in their own `pyproject.toml`, so they are loaded the same way as external ones:
 
 ```toml
-[project.entry-points."roundtable.turn_strategies"]
-round_robin = "roundtable.strategies.round_robin:RoundRobin"
+[project.entry-points."thinktank.turn_strategies"]
+round_robin = "thinktank.strategies.round_robin:RoundRobin"
 ```
 
-**Registry:** induláskor `importlib.metadata.entry_points(group=...)` betöltése, ellenőrzés (`issubclass`, van-e `name` és `Params`), hibás plugin esetén figyelmeztetés a naplóban, a hub ettől még elindul. A `GET /api/plugins` visszaadja a pluginek listáját a `Params.model_json_schema()`-val, a UI ebből generál konfigurációs űrlapot. Egy új stratégia így UI-módosítás nélkül megjelenik.
+**Registry:** at startup, load `importlib.metadata.entry_points(group=...)` and verify (`issubclass`, has `name` and `Params`); a bad plugin produces a warning in the log, but the hub still starts. `GET /api/plugins` returns the list of plugins with `Params.model_json_schema()`, and the UI generates a configuration form from this. A new strategy thus appears without any UI changes.
 
 ---
 
@@ -562,23 +562,23 @@ round_robin = "roundtable.strategies.round_robin:RoundRobin"
 ### 14.1 REST
 
 ```
-GET    /api/plugins                              pluginek + paraméter-sémák
+GET    /api/plugins                              plugins + parameter schemas
 
-GET    /api/agents                               agent-sablonok
+GET    /api/agents                               agent templates
 POST   /api/agents
 GET    /api/agents/{id}
 PUT    /api/agents/{id}
 DELETE /api/agents/{id}
-GET    /api/agents/{id}/memory?q=                hosszú távú memória böngészése
+GET    /api/agents/{id}/memory?q=                browsing long-term memory
 
-GET    /api/session-templates                    (CRUD ugyanígy)
+GET    /api/session-templates                    (same CRUD)
 
-POST   /api/sessions                             sablonból vagy inline konfigból
+POST   /api/sessions                             from a template or an inline config
 GET    /api/sessions
 GET    /api/sessions/{id}
 POST   /api/sessions/{id}/start | pause | resume | stop
 GET    /api/sessions/{id}/events?after_seq=&types=
-GET    /api/sessions/{id}/agents/{aid}/state     aktuális perszóna-állapot
+GET    /api/sessions/{id}/agents/{aid}/state     current persona state
 GET    /api/sessions/{id}/agents/{aid}/history   persona_versions
 GET    /api/sessions/{id}/agents/{aid}/memory?q=
 GET    /api/sessions/{id}/approvals
@@ -590,49 +590,49 @@ GET    /api/sessions/{id}/export?format=jsonl|csv
 
 `/ws/sessions/{id}?participant=<id>&token=<t>&after_seq=<n>`
 
-- Csatlakozáskor a szerver elküldi az összes `after_seq` utáni eseményt az adatbázisból, majd élőben folytatja. Így az újracsatlakozás veszteségmentes.
-- Szerver → kliens: `{"type": "event", "seq": 42, "event": {...}}`, valamint `{"type": "your_turn", "deadline": "..."}` emberi résztvevőnek.
-- Kliens → szerver: `{"type": "say", "content": "..."}`, `{"type": "raise_hand"}`, `{"type": "lower_hand"}`, `{"type": "intervene", "content": "..."}` (csak moderátor).
+- On connect, the server sends all events after `after_seq` from the database, then continues live. Reconnection is thus lossless.
+- Server → client: `{"type": "event", "seq": 42, "event": {...}}`, plus `{"type": "your_turn", "deadline": "..."}` for a human participant.
+- Client → server: `{"type": "say", "content": "..."}`, `{"type": "raise_hand"}`, `{"type": "lower_hand"}`, `{"type": "intervene", "content": "..."}` (moderator only).
 
-### 14.3 Hozzáférés
+### 14.3 Access
 
-v1: a hub `127.0.0.1`-re köt. Emberi résztvevőnként generált token az URL-ben. Ha LAN-on is el kell érni, egy egyszerű, `.env`-ben megadott admin-token kell a konfigurációs végpontokra.
+v1: the hub binds to `127.0.0.1`. A token generated per human participant is placed in the URL. If it also has to be reachable over a LAN, a simple admin token specified in `.env` is required for the configuration endpoints.
 
 ---
 
 ## 15. Web UI
 
-| Nézet | Tartalom |
+| View | Content |
 |---|---|
-| Irányítópult | sessionök listája állapottal, költséggel; új session |
-| Agent-könyvtár | agent-sablonok; űrlap: modell, mag, kezdő állapot, drift mód, memória, konzisztencia-ellenőrzés |
-| Session-építő | téma, vitakérdések, résztvevők kiválasztása, moderátor, stratégia (sémából generált paraméterűrlap), leállási feltételek; mentés sablonként |
-| Élő asztal | átirat; oldalsáv a résztvevőkkel (ki beszél, ki „gondolkodik”, kinél van jelentkezés); kör- és költségmérő; szünet/folytatás/leállítás; emberi beviteli mező és jelentkezés gomb; jóváhagyási panel APPROVED módhoz |
-| Agent-inspektor | mag, aktuális állapot, álláspont-idővonal kérdésenként (Chart.js), memória-kereső, konzisztencia-események |
-| Visszajátszás és export | egy lezárt session eseményenként léptethető; JSONL/CSV export |
+| Boardroom | list of sessions with state and cost; new session |
+| Persona Templates | agent templates; form: model, core, initial state, drift mode, memory, consistency check |
+| Session builder | topic, debate questions, participant selection, moderator, strategy (parameter form generated from the schema), stop conditions; save as a template |
+| Live table | transcript; sidebar with the participants (who is speaking, who is "thinking", whose hand is raised); round and cost meter; pause/resume/stop; human input field and raise-hand button; approval panel for APPROVED mode |
+| Agent inspector | core, current state, stance timeline per question (Chart.js), memory search, consistency events |
+| Replay and export | a closed session, step-through per event; JSONL/CSV export |
 
-Megvalósítás: Jinja2-sablonok, HTMX a részleges frissítésekhez, `htmx-ext-ws` az élő eseményekhez; a szerver HTML-részleteket küld az eseményekből.
+Implementation: Jinja2 templates, HTMX for partial updates, `htmx-ext-ws` for live events; the server sends HTML snippets from the events.
 
 ---
 
-## 16. Példa session-sablon
+## 16. Example Session Template
 
 ```yaml
-title: "Lehet-e egy LLM társszerző?"
+title: "Can an LLM be a co-author?"
 topic: >
-  A generatív AI egyre nagyobb szerepet kap a tudományos cikkírásban.
-  Vitassátok meg a szerzőség, a felelősség és a hozzájárulás kérdését.
-language: hu
+  Generative AI is taking an ever-larger role in scientific paper writing.
+  Debate the questions of authorship, responsibility, and contribution.
+language: en
 questions:
   - id: q_authorship
-    text: "Feltüntethető-e egy LLM szerzőként egy tudományos cikkben?"
+    text: "Can an LLM be listed as an author on a scientific paper?"
   - id: q_disclosure
-    text: "Kötelező legyen-e részletesen közölni az AI-használatot?"
+    text: "Should detailed disclosure of AI usage be mandatory?"
 participants:
   - agent: skeptic_methodologist
   - agent: pragmatic_editor
   - agent: ai_optimist
-  - human: "Sándor"
+  - human: "Sam"
 moderator: ai_moderator
 strategy:
   name: round_robin
@@ -645,39 +645,39 @@ reflection_every_rounds: 1
 
 ---
 
-## 17. Tesztelés
+## 17. Testing
 
-- **Unit:** stratégiák (determinisztikus sorrend, jelentkezés elsőbbsége), drift policyk (vágás, elutasítás), RRF-fúzió, kontextus-összeállítás tokenkerettel, prompt-renderelés (snapshot-tesztek).
-- **Integráció:** teljes session `FakeLLM`-mel (forgatókönyv szerinti válaszok), ideiglenes SQLite-adatbázison; ellenőrzés: eseménysorrend, projekciók, leállási feltételek.
-- **Visszajátszás-teszt:** egy lefutott session eseményeiből újraépített `SessionState` egyezik a futás végi állapottal.
-- **WebSocket:** `httpx` + FastAPI TestClient; újracsatlakozás `after_seq`-kel nem veszít eseményt.
-- **Live:** `pytest -m live`, valódi API-val, alapból kihagyva; egy rövid, kétagentes, kétkörös vita.
-- CI: ruff, pyright strict, pytest (live nélkül).
+- **Unit:** strategies (deterministic order, hand-raising priority), drift policies (clamping, rejection), RRF fusion, context assembly with the token budget, prompt rendering (snapshot tests).
+- **Integration:** a full session with `FakeLLM` (scripted responses), on a temporary SQLite database; checks: event order, projections, stop conditions.
+- **Replay test:** a `SessionState` rebuilt from the events of a completed session matches the final state of the run.
+- **WebSocket:** `httpx` + FastAPI TestClient; reconnection with `after_seq` loses no events.
+- **Live:** `pytest -m live`, real API, skipped by default; a short two-agent, two-round debate.
+- CI: ruff, pyright strict, pytest (no live).
 
 ---
 
-## 18. Mérföldkövek
+## 18. Milestones
 
-| # | Tartalom | Kész, ha |
+| # | Content | Done when |
 |---|---|---|
-| M0 | Repo, uv, ruff, pyright, pytest; Settings; DB + Alembic; pragmák; **sqlite-vec betöltése Macen és PC-n** | a tesztek zöldek, a sqlite-vec mindkét gépen betöltődik aiosqlite alatt |
-| M1 | Domain modell, események, SessionEngine, RoundRobin, AIAgent, LiteLLM-kliens, FakeLLM, CLI `roundtable run sablon.yaml` | egy 3 agentes vita lefut a parancssorban, az események az adatbázisban vannak, a visszajátszás-teszt zöld |
-| M2 | FastAPI hub, WebSocket, élő asztal nézet, HumanParticipant, szünet/folytatás/leállítás, költségkorlát | böngészőből indítható vita, ember hozzászól, újratöltés után az átirat hiánytalan |
-| M3 | Memória: epizodikus összefoglalók, hosszú távú tanulságok, sqlite-vec + FTS5 + RRF, EmbeddingProvider | egy második sessionben az agent hivatkozik az előző session tanulságára |
-| M4 | Perszóna: mag/állapot, vitakérdések, reflexió, LOCKED + FREE + shadow, persona_versions, agent-inspektor idővonallal | FREE módban látható és indokolt álláspont-változás; LOCKED módban az állapot nem változik, a shadow javaslatok naplózódnak |
-| M5 | Plugin-registry entry pointokkal, sémából generált űrlapok, HandRaisePriority, második stratégia (ModeratorPicks vagy Bidding) | egy külön telepített csomag stratégiája megjelenik a UI-ban és használható |
-| M6 | BOUNDED és APPROVED mód, jóváhagyási panel, konzisztencia-ellenőrzés, export, visszajátszás nézet | minden drift mód működik; a JSONL-export elemzésre kész |
-| M7 (opcionális) | RemoteAgent, token-streaming a UI-ba, eszközhasználó agentek (pl. irodalomkeresés) | |
+| M0 | Repo, uv, ruff, pyright, pytest; Settings; DB + Alembic; pragmas; **loading sqlite-vec on Mac and PC** | tests are green and sqlite-vec loads under aiosqlite on both machines |
+| M1 | Domain model, events, SessionEngine, RoundRobin, AIAgent, LiteLLM client, FakeLLM, CLI `thinktank run template.yaml` | a three-agent debate runs from the command line, the events are in the database, the replay test is green |
+| M2 | FastAPI hub, WebSocket, live table view, HumanParticipant, pause/resume/stop, cost limit | a debate can be started from the browser, a human contributes, the transcript is intact after a reload |
+| M3 | Memory: episodic summaries, long-term takeaways, sqlite-vec + FTS5 + RRF, EmbeddingProvider | in a second session the agent refers to a takeaway from the previous session |
+| M4 | Persona: core/state, debate questions, reflection, LOCKED + FREE + shadow, persona_versions, agent inspector with a timeline | a visible and justified stance change in FREE mode; in LOCKED mode the state does not change and the shadow proposals are logged |
+| M5 | Plugin registry with entry points, schema-generated forms, HandRaisePriority, a second strategy (ModeratorPicks or Bidding) | a strategy from a separately installed package appears in the UI and is usable |
+| M6 | BOUNDED and APPROVED mode, approval panel, consistency check, export, replay view | every drift mode works; the JSONL export is ready for analysis |
+| M7 (optional) | RemoteAgent, token streaming to the UI, tool-using agents (e.g., literature search) | |
 
-M1 után a rendszer már kutatási kísérletekre is használható parancssorból, a UI nélkül is.
+After M1, the system can already be used for research experiments from the command line, without the UI.
 
 ---
 
-## 19. Kockázatok és nyitott kérdések
+## 19. Risks and Open Questions
 
-- **sqlite-vec betöltése:** a macOS rendszer-Pythonja és egyes Python-buildek nem engedik a `enable_load_extension`-t. Az M0 első feladata ezt ellenőrizni az uv által telepített Pythonnal, aiosqlite alatt, mindkét gépen.
-- **Konvergencia és sycophancy:** az agentek hajlamosak gyorsan egyetérteni. Ellenszerek: eltérő modellek az agentekhez, erős és konkrét mag, a reflexiós prompt „nincs változás” opciója, ördögügyvéd szerep, és a BOUNDED mód.
-- **Költség:** N agent × kör × (beszéd + összefoglaló + reflexió + opcionális bíró). A költségkorlát kötelező alapbeállítás; a mellékhívásokhoz (összefoglaló, reflexió, bíró) olcsóbb modell konfigurálható.
-- **Többszereplős beszélgetés chat-formátumban:** a „mások = user, én = assistant” leképezés működik, de modellenként érdemes összevetni azzal, amikor az egész átirat egyetlen user-üzenetben érkezik.
-- **Vitakérdések rögzítése:** v1-ben a kérdéseket a session elején kell megadni. Nyitott kérdés, hogy később a moderátor vagy az agentek vehessenek-e fel új kérdést futás közben.
-- **Promptnyelv:** magyar vagy angol utasítás, magyar kimenettel; a perszóna-stabilitásra gyakorolt hatást mérni kell.
+- **Loading sqlite-vec:** the macOS system Python and some Python builds do not allow `enable_load_extension`. The first task of M0 is to verify this with the uv-installed Python, under aiosqlite, on both machines.
+- **Convergence and sycophancy:** agents tend to agree quickly. Countermeasures: different models for the agents, a strong and concrete core, the "no change" option in the reflection prompt, a devil's advocate role, and BOUNDED mode.
+- **Cost:** N agents × rounds × (speech + summary + reflection + optional judge). The cost limit is a required default; a cheaper model can be configured for the side calls (summary, reflection, judge).
+- **Multi-participant conversation in chat format:** the "others = user, self = assistant" mapping works, but it is worth comparing, per model, with the setup where the whole transcript arrives in a single user message.
+- **Fixed debate questions:** in v1 the questions must be given at the start of the session. It is an open question whether the moderator or the agents can add a new question during a run later.
+- **Prompt language:** Hungarian or English instructions with Hungarian output; the effect on persona stability must be measured.

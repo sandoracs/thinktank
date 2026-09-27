@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="inspector">
+  <div class="live-head">
+    <div>
+      <h1>{{ data.persona.name }} <span class="chip chip-ai">{{ data.agent_id }}</span></h1>
+      <div class="muted">{{ data.persona.role }}</div>
+    </div>
+    <div class="controls">
+      <span class="chip">drift: {{ data.drift_mode or '?' }}</span>
+      <a class="btn" href="/sessions/{{ data.session_id }}">← live table</a>
+    </div>
+  </div>
+
+  <div class="grid-row">
+    <div class="card">
+      <h2>Persona core (frozen)</h2>
+      <ul class="facts">
+        {% if data.persona.expertise %}<li><b>Expertise:</b> {{ data.persona.expertise|join(', ') }}</li>{% endif %}
+        {% if data.persona['values'] %}<li><b>Values:</b> {{ data.persona['values']|join(', ') }}</li>{% endif %}
+        {% if data.persona.communication_style %}<li><b>Communication style:</b> {{ data.persona.communication_style }}</li>{% endif %}
+        {% if data.persona.temperament %}<li><b>Temperament:</b> {{ data.persona.temperament }}</li>{% endif %}
+        {% if data.persona.background %}<li><b>Background:</b> {{ data.persona.background }}</li>{% endif %}
+        {% if data.persona.boundaries %}<li><b>Boundaries:</b> {{ data.persona.boundaries|join('; ') }}</li>{% endif %}
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Current state</h2>
+      {% if data.current %}
+        {% if data.current.stances %}
+        <table class="grid">
+          <tr><th>Question</th><th>Stance</th><th>Confidence</th></tr>
+          {% for qid, stance in data.current.stances.items() %}
+          <tr>
+            <td>{{ qid }}</td>
+            <td>{{ stance.position }}</td>
+            <td>{{ '%.2f'|format(stance.confidence) }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+        {% if data.current.attitudes %}
+        <table class="grid">
+          <tr><th>Resistant toward</th><th>Attitude</th></tr>
+          {% for pid, value in data.current.attitudes.items() %}
+          <tr><td>{{ pid }}</td><td>{{ '%+.2f'|format(value) }}</td></tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+        <div class="facts"><li><b>Mood:</b> {{ data.current.mood }}</li></div>
+      {% else %}
+        <div class="muted">No state changes recorded yet.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Memory search</h2>
+    <p class="muted">Search across the agent's episodic and long-term memories.</p>
+    <div class="row">
+      <input id="memory-query" placeholder="e.g. collaboration, LLM, boundaries..." class="wide">
+      <select id="memory-layer">
+        <option value="all">all</option>
+        <option value="episodic">episodic</option>
+        <option value="long_term">long-term</option>
+      </select>
+      <button type="button" class="btn btn-primary" id="memory-search-btn">Search</button>
+    </div>
+    <div id="memory-results" class="memory-results"></div>
+  </div>
+
+  <div class="card">
+    <h2>Drift timeline (persona_versions)</h2>
+    {% if data.timeline %}
+    <table class="grid">
+      <tr><th>Version</th><th>Stances</th><th>Attitudes</th><th>Mood</th><th>Cause (seq)</th><th>Time</th></tr>
+      {% for row in data.timeline %}
+      <tr>
+        <td>{{ row.version }}</td>
+        <td>
+          {% for qid, stance in row.state.stances.items() %}
+            {{ qid }}: {{ stance.position }} ({{ '%.2f'|format(stance.confidence) }}){{ ' ' if not loop.last else '' }}
+          {% endfor %}
+        </td>
+        <td>
+          {% for pid, value in row.state.attitudes.items() %}
+            {{ pid }} ({{ '%+.2f'|format(value) }}){{ ' ' if not loop.last else '' }}
+          {% endfor %}
+        </td>
+        <td>{{ row.state.mood }}</td>
+        <td>{{ row.cause_seq if row.cause_seq is not none else '—' }}</td>
+        <td>{{ row.created_at }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <div class="muted">No persona changes applied in this session.</div>
+    {% endif %}
+  </div>
+
+  <div class="card">
+    <h2>Reflection events</h2>
+    {% if data.events %}
+    <ul class="facts">
+      {% for e in data.events %}
+      <li>
+        <span class="chip">{{ e.type }}</span>
+        seq {{ e.seq }}
+        {% if e.payload.get('shadow') %}<span class="chip">shadow</span>{% endif %}
+        {% if e.payload.get('reason') %} — {{ e.payload.get('reason') }}{% endif %}
+        {% if e.payload.get('notes') %} — {{ e.payload.get('notes')|join(', ') }}{% endif %}
+        {% if e.payload.get('proposal') %}
+          {% for su in e.payload.get('proposal', {}).get('stance_updates', []) %}
+            <div class="hint">{{ su.question_id }} → {{ su.new_position }} ({{ '%.2f'|format(su.new_confidence) }}); reason: {{ su.reason }}; influenced by: {{ su.influenced_by|join(', ') }}</div>
+          {% endfor %}
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="muted">No reflection events in this session.</div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const btn = document.getElementById("memory-search-btn");
+  const query = document.getElementById("memory-query");
+  const layer = document.getElementById("memory-layer");
+  const results = document.getElementById("memory-results");
+  if (!btn || !query || !results) return;
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+    }[c]));
+  }
+
+  async function search() {
+    const q = query.value.trim();
+    const params = new URLSearchParams({ q: q, k: "8" });
+    if (layer && layer.value !== "all") params.set("layer", layer.value);
+    results.innerHTML = '<span class="muted">Searching…</span>';
+    try {
+      const r = await fetch("/api/sessions/{{ data.session_id }}/agents/{{ data.agent_id }}/memory?" + params.toString());
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const data = await r.json();
+      if (!data.results || data.results.length === 0) {
+        results.innerHTML = '<span class="muted">No results.</span>';
+        return;
+      }
+      const items = data.results.map((h) =>
+        '<div class="memory-hit">' +
+        '<span class="chip">' + escapeHtml(h.layer) + '</span> ' +
+        '<span class="hint">score ' + escapeHtml(h.score) + (h.source_seq ? ', seq ' + escapeHtml(h.source_seq) : '') + '</span> ' +
+        '<div>' + escapeHtml(h.content) + '</div>' +
+        '</div>'
+      ).join("");
+      results.innerHTML = items;
+    } catch (e) {
+      results.innerHTML = '<span class="muted">Error: ' + escapeHtml(e.message) + '</span>';
+    }
+  }
+
+  btn.addEventListener("click", search);
+  query.addEventListener("keydown", (e) => { if (e.key === "Enter") search(); });
+})();
+</script>
+{% endblock %}

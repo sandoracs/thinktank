@@ -1,8 +1,9 @@
 [project]
-name = "roundtable"
+name = "thinktank"
 version = "0.1.0"
 description = "Multi-party debate system: AI agents and humans talk around a virtual table."
 readme = "DESIGN.md"
+license = { text = "MIT or Commercial (see LICENSE and COMMERCIAL-LICENSE.md)" }
 requires-python = ">=3.12"
 dependencies = [
     # web
@@ -36,30 +37,30 @@ dependencies = [
 embeddings = ["sentence-transformers>=2.7"]
 
 [project.scripts]
-roundtable = "roundtable.cli:main"
+thinktank = "thinktank.cli:main"
 
 # ---------------------------------------------------------------------------
 # Plugin entry points. Built-ins are registered through the same mechanism as
 # external plugins (see DESIGN.md §13).
 # ---------------------------------------------------------------------------
-[project.entry-points."roundtable.turn_strategies"]
-round_robin = "roundtable.strategies.round_robin:RoundRobin"
-hand_raise = "roundtable.strategies.hand_raise:HandRaisePriority"
-bidding = "roundtable.strategies.bidding:Bidding"
+[project.entry-points."thinktank.turn_strategies"]
+round_robin = "thinktank.strategies.round_robin:RoundRobin"
+hand_raise = "thinktank.strategies.hand_raise:HandRaisePriority"
+bidding = "thinktank.strategies.bidding:Bidding"
 
-[project.entry-points."roundtable.participants"]
-llm = "roundtable.participants.ai_agent:AIAgent"
-remote = "roundtable.participants.remote:RemoteAgent"
+[project.entry-points."thinktank.participants"]
+llm = "thinktank.participants.ai_agent:AIAgent"
+remote = "thinktank.participants.remote:RemoteAgent"
 
-[project.entry-points."roundtable.drift_policies"]
-locked = "roundtable.persona.policies:LockedPolicy"
-bounded = "roundtable.persona.policies:BoundedPolicy"
-approved = "roundtable.persona.policies:ApprovedPolicy"
-free = "roundtable.persona.policies:FreePolicy"
+[project.entry-points."thinktank.drift_policies"]
+locked = "thinktank.persona.policies:LockedPolicy"
+bounded = "thinktank.persona.policies:BoundedPolicy"
+approved = "thinktank.persona.policies:ApprovedPolicy"
+free = "thinktank.persona.policies:FreePolicy"
 
-[project.entry-points."roundtable.embedding_providers"]
-fake = "roundtable.memory.embeddings:FakeEmbeddingProvider"
-litellm = "roundtable.memory.embeddings:LiteLLMEmbeddingProvider"
+[project.entry-points."thinktank.embedding_providers"]
+fake = "thinktank.memory.embeddings:FakeEmbeddingProvider"
+litellm = "thinktank.memory.embeddings:LiteLLMEmbeddingProvider"
 
 # ---------------------------------------------------------------------------
 [dependency-groups]
@@ -84,7 +85,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/roundtable"]
+packages = ["src/thinktank"]
 
 # ---------------------------------------------------------------------------
 [tool.ruff]
@@ -108,10 +109,10 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = ["S101", "PLR0915", "ANN001", "ANN201", "ANN202", "S105", "S106"]
-"src/roundtable/storage/tables.py" = ["PLR0913"]
+"src/thinktank/storage/tables.py" = ["PLR0913"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["roundtable"]
+known-first-party = ["thinktank"]
 
 # ---------------------------------------------------------------------------
 [tool.pyright]
@@ -143,4 +144,4 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["roundtable"]
+source = ["thinktank"]

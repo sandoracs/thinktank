@@ -204,7 +204,7 @@ def test_raise_hand_is_event_sourced(client: TestClient) -> None:
             ),
         )
         assert raised is not None
-        assert "kéz" in raised["fragments"]["sidebar"]
+        assert "hand" in raised["fragments"]["sidebar"]
         # answer so the session can finish
         ws.send_text(json.dumps({"type": "say", "content": "Done."}))
         _recv_until(

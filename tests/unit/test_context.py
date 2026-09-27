@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import uuid
 
-from roundtable.core.context import ContextBuilder, ParticipantInfo
-from roundtable.core.state import SessionState
-from roundtable.domain.models import AgentConfig, Message, PersonaCore, SessionConfig
+from thinktank.core.context import ContextBuilder, ParticipantInfo
+from thinktank.core.state import SessionState
+from thinktank.domain.models import AgentConfig, Message, PersonaCore, SessionConfig
 
 
 def _session_id() -> uuid.UUID:

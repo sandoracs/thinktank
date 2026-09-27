@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Persona Templates</h1>
+<p class="muted">Click an agent to edit it.</p>
+<p class="actions"><a class="btn btn-primary" href="/agents/new">New Persona</a></p>
+<div class="cards">
+  {% for a in agents %}
+  <a class="card card-link" href="/agents/{{ a.id }}/edit" title="edit {{ a.id }}">
+    <div class="card-head">
+      {% if a.color %}<span class="dot dot-big" style="background: {{ a.color }}"></span>{% endif %}
+      <span class="person-name">{{ a.persona.name }}</span>
+      <span class="chip chip-ai">{{ a.id }}</span>
+    </div>
+    <div class="muted">{{ a.persona.role }}</div>
+    <ul class="facts">
+      <li><b>Model:</b> {{ a.model }}</li>
+      {% if a.persona.age %}<li><b>Age:</b> {{ a.persona.age }}</li>{% endif %}
+      <li><b>Temperature:</b> {{ a.temperature }}</li>
+      {% if a.persona.expertise %}<li><b>Expertise:</b> {{ a.persona.expertise|join(', ') }}</li>{% endif %}
+      {% if a.persona['values'] %}<li><b>Values:</b> {{ a.persona['values']|join(', ') }}</li>{% endif %}
+      {% if a.persona.boundaries %}<li><b>Boundaries:</b> {{ a.persona.boundaries|join('; ') }}</li>{% endif %}
+      <li><b>Drift mode:</b> <span class="chip">{{ a.drift_mode }}</span></li>
+    </ul>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

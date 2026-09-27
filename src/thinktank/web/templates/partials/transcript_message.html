@@ -1,0 +1,8 @@
+<div class="msg kind-{{ message.kind }}" {% if speaker_bg %}style="background: {{ speaker_bg }}; color: {{ speaker_fg }}"{% endif %}>
+  <div class="msg-head">
+    <span class="speaker">{{ speaker }}</span>
+    <span class="chip chip-{{ message.kind }}" {% if speaker_bg %}style="color: {{ speaker_fg }}; border-color: {{ speaker_fg }}"{% endif %}>{{ message.kind }}</span>
+    <span class="seq" {% if speaker_bg %}style="color: {{ speaker_fg }}"{% endif %}>#{{ event.seq }}</span>
+  </div>
+  <div class="msg-body">{{ message.content }}</div>
+</div>

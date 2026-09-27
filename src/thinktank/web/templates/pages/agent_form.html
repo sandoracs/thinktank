@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+{% set editing = agent is not none %}
+{% block content %}
+
+<h1>{{ 'Edit agent' if editing else 'New Persona' }}</h1>
+{% if editing %}
+<p class="hint">{{ agent.id }} — saving updates the agent immediately.</p>
+{% endif %}
+<form method="post" action="{{ '/agents/' ~ agent.id if editing else '/agents' }}" class="builder">
+  <div class="row">
+    {% if editing %}
+    <input type="hidden" name="id" value="{{ agent.id }}">
+    {% else %}
+    <label>ID
+      <input name="id" required placeholder="e.g. cautious_statistician">
+    </label>
+    {% endif %}
+    <label>Model
+      <select name="model" {% if not model_options and not (editing and agent.model) %}disabled title="Register a provider under Settings → LLM providers to fetch models"{% endif %}>
+        <option value="">Default model (Settings)</option>
+        {% for m in model_options %}
+        <option value="{{ m }}" {% if editing and agent.model == m %}selected{% endif %}>{{ m }}</option>
+        {% endfor %}
+        {% if editing and agent.model and agent.model not in model_options %}
+        <option value="{{ agent.model }}" selected>{{ agent.model }} (current)</option>
+        {% endif %}
+      </select>
+    </label>
+    <label>Temperature (0-2)
+      <input name="temperature" type="number" min="0" max="2" step="0.1" value="{{ agent.temperature if editing else '0.7' }}" class="narrow">
+    </label>
+    {% if editing and agent.color %}
+    <span class="swatch-wrap" title="Agent color">
+      <span class="dot dot-big" style="background: {{ agent.color }}"></span>
+      <span class="muted">{{ agent.color }}</span>
+    </span>
+    {% endif %}
+  </div>
+
+  <fieldset>
+    <legend>Persona core</legend>
+    <div class="row">
+      <label>Name
+        <input name="persona_name" placeholder="e.g. Dr. Anna Smith" value="{{ agent.persona.name if editing else '' }}">
+      </label>
+      <label>Role
+        <input name="persona_role" placeholder="e.g. cautious statistician" value="{{ agent.persona.role if editing else '' }}">
+      </label>
+      <label>Age
+        <input name="persona_age" placeholder="e.g. 35, or: 30-40" value="{{ agent.persona.age if editing else '' }}">
+      </label>
+    </div>
+    <label>Expertise (comma-separated)
+      <input name="expertise" placeholder="e.g. statistics, inference" value="{{ agent.persona.expertise|join(', ') if editing else '' }}">
+    </label>
+    <label>Values (comma-separated)
+      <input name="values" placeholder="e.g. accuracy, transparency" value="{{ agent.persona['values']|join(', ') if editing else '' }}">
+    </label>
+    <label>Boundaries (comma-separated)
+      <input name="boundaries" placeholder="e.g. does not give medical advice" value="{{ agent.persona.boundaries|join('; ') if editing else '' }}">
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Drift and consistency</legend>
+    <div class="row">
+      <label>Drift mode
+        <select name="drift_mode">
+          {% for m in ["locked", "bounded", "approved", "free"] %}
+          <option value="{{ m }}" {% if editing and agent.drift_mode == m %}selected{% endif %}>{{ m }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Consistency check
+        <select name="consistency_check">
+          <option value="" {% if not (editing and agent.consistency_check) %}selected{% endif %}>off</option>
+          <option value="on" {% if editing and agent.consistency_check %}selected{% endif %}>on</option>
+        </select>
+      </label>
+      <label>Threshold (1-5)
+        <input name="consistency_threshold" type="number" min="1" max="5" value="{{ agent.consistency_threshold if editing else '3' }}" class="narrow">
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Memory</legend>
+    <div class="row">
+      <label>Working window (messages)
+        <input name="working_window" type="number" min="1" value="{{ agent.memory.working_window if editing else '12' }}" class="narrow">
+      </label>
+      <label>Summarization frequency
+        <input name="summarize_every" type="number" min="1" value="{{ agent.memory.summarize_every if editing else '8' }}" class="narrow">
+      </label>
+      <label>Relevance k (search)
+        <input name="retrieval_k" type="number" min="1" value="{{ agent.memory.retrieval_k if editing else '5' }}" class="narrow">
+      </label>
+      <label>Long-term memory
+        <select name="long_term">
+          <option value="on" {% if not (editing and agent.memory.long_term == false) %}selected{% endif %}>on</option>
+          <option value="off" {% if editing and agent.memory.long_term == false %}selected{% endif %}>off</option>
+        </select>
+      </label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Initial state</legend>
+    <div class="row">
+      <label>Initial mood
+        <input name="initial_mood" placeholder="e.g. neutral, bold, cautious" value="{{ agent.initial_state.mood if editing else 'neutral' }}">
+      </label>
+    </div>
+    <p class="hint">Stances and attitudes evolve per session; only the starting mood is set here.</p>
+  </fieldset>
+
+  <div class="form-footer">
+    <p class="actions">
+      <button type="submit" class="btn btn-primary">{{ 'Save changes' if editing else 'Save agent' }}</button>
+      <a class="btn" href="/agents">Cancel</a>
+    </p>
+    {% if editing %}
+    <button type="button" class="btn btn-danger btn-x" id="delete-agent" data-id="{{ agent.id }}" title="Delete agent" aria-label="Delete agent">✕</button>
+    {% endif %}
+  </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+{% if editing %}
+<script>
+(function () {
+  const btn = document.getElementById("delete-agent");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  btn.addEventListener("click", async () => {
+    if (!confirm('Really delete the agent "' + id + '"? This cannot be undone.')) return;
+    let r;
+    try {
+      r = await fetch("/api/agents/" + encodeURIComponent(id), { method: "DELETE" });
+    } catch (e) {
+      alert("Could not reach the server: " + e.message);
+      return;
+    }
+    if (r.status === 204) {
+      window.location.href = "/agents";
+      return;
+    }
+    let detail = "Error: HTTP " + r.status;
+    try {
+      const d = await r.json();
+      if (d && d.detail) detail = d.detail;
+    } catch (e) { /* keep default */ }
+    alert(detail);
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

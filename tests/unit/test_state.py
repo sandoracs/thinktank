@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import uuid
 
-from roundtable.core.state import project
-from roundtable.domain.events import Event, EventType
-from roundtable.domain.models import ParticipantRef, SessionConfig
+from thinktank.core.state import project
+from thinktank.domain.events import Event, EventType
+from thinktank.domain.models import ParticipantRef, SessionConfig
 
 
 def _base_session() -> SessionConfig:

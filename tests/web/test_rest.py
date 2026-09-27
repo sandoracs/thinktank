@@ -3,15 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from pathlib import Path
+from typing import Any
 
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
-from roundtable.llm.client import ChatMessage, Purpose
-from roundtable.llm.fake import FakeLLM
-from roundtable.web.app import create_app
+from thinktank.llm.client import ChatMessage, Purpose
+from thinktank.llm.fake import FakeLLM
+from thinktank.web.app import create_app
 
 TWO_AGENT_SESSION = {
     "title": "Web test",
@@ -41,11 +43,53 @@ def test_agent_library_seeded(client: TestClient) -> None:
     ids = {a["id"] for a in agents}
     assert {"ai_moderator", "ai_optimist", "skeptic_methodologist", "pragmatic_editor"} <= ids
     by_id = {a["id"]: a for a in agents}
-    assert by_id["ai_optimist"]["persona"]["name"] == "Tóth Lilla"
+    assert by_id["ai_optimist"]["persona"]["name"] == "Lily Carter"
     assert by_id["ai_moderator"]["drift_mode"] == "locked"
 
 
-def _new_agent_body(agent_id: str = "cautious_statistician") -> dict[str, object]:
+def test_agent_color_and_persona_age(client: TestClient) -> None:
+    """Agents get a stable random display color; persona age round-trips."""
+    body = _new_agent_body("age_agent")
+    body["persona"]["age"] = "35"
+    r = client.post("/api/agents", json=body)
+    assert r.status_code == 201
+    data = r.json()
+    assert data["persona"]["age"] == "35"
+    assert re.fullmatch(r"#[0-9a-f]{6}", data["color"]) is not None
+    assert "level" not in data
+
+    # Seeded agents are given a random color at startup.
+    seeded = {a["id"]: a for a in client.get("/api/agents").json()}
+    for agent in seeded.values():
+        assert re.fullmatch(r"#[0-9a-f]{6}", agent["color"]) is not None
+
+    # Age is editable through the form; the color is preserved.
+    form = {
+        "id": "age_agent",
+        "model": "ollama/qwen3.8",
+        "persona_name": "Dr. Stat",
+        "persona_role": "cautious statistician",
+        "persona_age": "30-40",
+        "drift_mode": "bounded",
+        "consistency_check": "on",
+        "consistency_threshold": "3",
+        "working_window": "12",
+        "summarize_every": "8",
+        "retrieval_k": "5",
+        "long_term": "on",
+        "initial_mood": "neutral",
+    }
+    r2 = client.post("/agents/age_agent", data=form, follow_redirects=False)
+    assert r2.status_code == 303
+    updated = next(a for a in client.get("/api/agents").json() if a["id"] == "age_agent")
+    assert updated["persona"]["age"] == "30-40"
+    assert updated["color"] == data["color"]
+
+    # Cleanup.
+    assert client.delete("/api/agents/age_agent").status_code == 204
+
+
+def _new_agent_body(agent_id: str = "cautious_statistician") -> dict[str, Any]:
     return {
         "id": agent_id,
         "model": "anthropic/claude-3-5-sonnet",
@@ -131,7 +175,7 @@ def test_agent_form_creates_template(client: TestClient) -> None:
         "summarize_every": "5",
         "retrieval_k": "9",
         "long_term": "off",
-        "initial_mood": "bizakodó",
+        "initial_mood": "bold",
     }
     response = client.post("/agents", data=form, follow_redirects=False)
     assert response.status_code == 303
@@ -146,18 +190,18 @@ def test_agent_form_creates_template(client: TestClient) -> None:
         "retrieval_k": 9,
         "long_term": False,
     }
-    assert listing["form_agent"]["initial_state"]["mood"] == "bizakodó"
+    assert listing["form_agent"]["initial_state"]["mood"] == "bold"
 
 
 def test_agent_form_page_renders(client: TestClient) -> None:
     page = client.get("/agents/new")
     assert page.status_code == 200
-    assert "Új agent" in page.text
+    assert "New Persona" in page.text
     assert "drift_mode" in page.text
-    assert "Memória" in page.text
+    assert "Memory" in page.text
     assert "working_window" in page.text
     assert "long_term" in page.text
-    assert "Kezdő állapot" in page.text
+    assert "Initial state" in page.text
     assert "initial_mood" in page.text
 
 
@@ -166,7 +210,7 @@ def test_agent_edit_page_prefilled_with_delete_button(client: TestClient) -> Non
     page = client.get("/agents/cautious_statistician/edit")
     assert page.status_code == 200
     text = page.text
-    assert "Agent szerkesztése" in text
+    assert "Edit agent" in text
     assert 'name="id" value="cautious_statistician"' in text
     assert "Dr. Stat" in text
     assert "cautious statistician" in text
@@ -191,8 +235,8 @@ def test_agent_edit_form_updates(client: TestClient) -> None:
         "id": "cautious_statistician",
         "model": "ollama/qwen3.8",
         "temperature": "0.2",
-        "persona_name": "Dr. Módosított",
-        "persona_role": "frissített szerep",
+        "persona_name": "Dr. Modified",
+        "persona_role": "updated role",
         "expertise": "a, b",
         "values": "rigor",
         "boundaries": "no harm",
@@ -203,14 +247,14 @@ def test_agent_edit_form_updates(client: TestClient) -> None:
         "summarize_every": "2",
         "retrieval_k": "4",
         "long_term": "on",
-        "initial_mood": "bizakodó",
+        "initial_mood": "bold",
     }
     response = client.post("/agents/cautious_statistician", data=form, follow_redirects=False)
     assert response.status_code == 303
     listing = {a["id"]: a for a in client.get("/api/agents").json()}
     updated = listing["cautious_statistician"]
     assert updated["model"] == "ollama/qwen3.8"
-    assert updated["persona"]["name"] == "Dr. Módosított"
+    assert updated["persona"]["name"] == "Dr. Modified"
     assert updated["persona"]["expertise"] == ["a", "b"]
     assert updated["drift_mode"] == "free"
     assert updated["memory"] == {
@@ -219,7 +263,7 @@ def test_agent_edit_form_updates(client: TestClient) -> None:
         "retrieval_k": 4,
         "long_term": True,
     }
-    assert updated["initial_state"]["mood"] == "bizakodó"
+    assert updated["initial_state"]["mood"] == "bold"
 
     # id in the form must match the path.
     bad = client.post("/agents/cautious_statistician", data={**form, "id": "someone_else"}, follow_redirects=False)
@@ -232,7 +276,7 @@ def test_agent_library_links_to_edit(client: TestClient) -> None:
     page = client.get("/agents")
     assert page.status_code == 200
     assert '/agents/ai_moderator/edit' in page.text
-    assert "Kattints egy agentre" in page.text
+    assert "Click an agent" in page.text
 
 
 def test_plugins_lists_builtin_strategies(client: TestClient) -> None:
@@ -281,6 +325,78 @@ def test_unknown_agent_rejected(client: TestClient) -> None:
 def test_starting_unknown_session_404s(client: TestClient) -> None:
     assert client.get("/api/sessions/not-a-uuid").status_code == 404
     assert client.post("/api/sessions/not-a-uuid/start").status_code == 404
+
+
+def test_reset_restores_session_and_restarts(client: TestClient) -> None:
+    """Reset wipes the conversation and lets the same session run again (DESIGN.md §15)."""
+    session_id = client.post("/api/sessions", json=TWO_AGENT_SESSION).json()["id"]
+    assert client.post(f"/api/sessions/{session_id}/start").status_code == 200
+    assert _wait_status(client, session_id, {"ended"}) == "ended"
+    state = client.get(f"/api/sessions/{session_id}").json()
+    assert state["message_count"] >= 3
+
+    # Reset -> back to the initial state, conversation wiped, same id.
+    r = client.post(f"/api/sessions/{session_id}/reset")
+    assert r.status_code == 200, r.text
+    assert r.json() == {"id": session_id, "status": "created"}
+    state = client.get(f"/api/sessions/{session_id}").json()
+    assert state["status"] == "created"
+    assert state["message_count"] == 0
+    assert state["ended_reason"] is None
+
+    # The same session id can be started again from the beginning.
+    assert client.post(f"/api/sessions/{session_id}/start").status_code == 200
+    assert _wait_status(client, session_id, {"ended"}) == "ended"
+    assert client.get(f"/api/sessions/{session_id}").json()["message_count"] >= 3
+
+    # Unknown sessions 404.
+    assert client.post("/api/sessions/not-a-uuid/reset").status_code == 404
+    assert client.post("/api/sessions/00000000-0000-0000-0000-000000000000/reset").status_code == 404
+
+
+def test_session_edit_flow(client: TestClient) -> None:
+    """A not-yet-started session can be edited; a started one cannot (DESIGN.md §15)."""
+    session_id = client.post("/api/sessions", json=TWO_AGENT_SESSION).json()["id"]
+
+    # The edit page is prefilled with the stored config.
+    page = client.get(f"/sessions/{session_id}/edit")
+    assert page.status_code == 200
+    assert f'action="/sessions/{session_id}/edit"' in page.text
+    assert "Edit session" in page.text
+    assert 'value="Web test"' in page.text
+
+    form = {
+        "title": "Edited title",
+        "topic": "Edited topic",
+        "language": "hu",
+        "questions": "Q1?\nQ2?",
+        "agents": ["ai_moderator", "ai_optimist"],
+        "humans": "",
+        "moderator": "ai_moderator",
+        "strategy": "round_robin",
+        "strategy_params": "{}",
+        "max_rounds": "2",
+        "max_cost_usd": "7",
+    }
+    r = client.post(f"/sessions/{session_id}/edit", data=form, follow_redirects=False)
+    assert r.status_code == 303, r.text
+    state = client.get(f"/api/sessions/{session_id}").json()
+    assert state["config"]["title"] == "Edited title"
+    assert state["config"]["stop"]["max_rounds"] == 2
+    assert state["config"]["questions"] == [{"id": "q1", "text": "Q1?"}, {"id": "q2", "text": "Q2?"}]
+    assert state["status"] == "created"
+
+    # The edited config is the one the engine actually runs with.
+    assert client.post(f"/api/sessions/{session_id}/start").status_code == 200
+    assert _wait_status(client, session_id, {"ended"}) == "ended"
+    assert client.get(f"/api/sessions/{session_id}").json()["message_count"] >= 3
+
+    # Once the session has run, editing is refused.
+    assert client.post(f"/sessions/{session_id}/edit", data=form).status_code == 409
+
+    # Unknown session -> 404.
+    assert client.get("/sessions/not-a-uuid/edit").status_code == 404
+    assert client.post("/sessions/not-a-uuid/edit", data=form).status_code == 404
 
 
 def test_events_after_seq_and_type_filter(client: TestClient) -> None:
@@ -337,9 +453,9 @@ def test_pause_resume_stop_with_pending_human(client: TestClient) -> None:
 def test_builder_form_creates_and_redirects(client: TestClient) -> None:
     form = {
         "title": "Form build",
-        "topic": "AI és tudomány",
+        "topic": "AI and science",
         "language": "hu",
-        "questions": "Jó ez?\nÉs ez?",
+        "questions": "Is this good?\nAnd this one?",
         "agents": ["ai_moderator", "ai_optimist"],
         "humans": "Sándor",
         "moderator": "ai_moderator",
@@ -375,7 +491,7 @@ def test_builder_form_applies_strategy_params(client: TestClient) -> None:
         "title": "Bidding form",
         "topic": "T",
         "language": "hu",
-        "questions": "Jó ez?",
+        "questions": "Is this good?",
         "agents": ["ai_moderator", "ai_optimist"],
         "strategy": "bidding",
         "strategy_params": '{"bid_model": "fake", "bid_temperature": 0.1}',
@@ -472,7 +588,7 @@ def test_approval_flow_over_api(tmp_path: Path) -> None:
         # The live table renders the approval panel with the pending request.
         live_html = c.get(f"/sessions/{session_id}").text
         assert 'id="approvals-panel"' in live_html
-        assert "Jóváhagyás" in live_html
+        assert "Approve" in live_html
 
         # Approve it.
         r = c.post(
@@ -497,22 +613,67 @@ def test_approval_flow_over_api(tmp_path: Path) -> None:
         assert r.status_code == 409
 
 
-def test_replay_page_renders(client: TestClient) -> None:
-    """M6: a finished session can be opened in the step-through replay view."""
+def test_session_download_json(client: TestClient) -> None:
+    """A finished session downloads as a single JSON file (config + event stream)."""
     session_id = client.post("/api/sessions", json=TWO_AGENT_SESSION).json()["id"]
     client.post(f"/api/sessions/{session_id}/start")
     assert _wait_status(client, session_id, {"ended"}, timeout=15) == "ended"
 
-    page = client.get(f"/sessions/{session_id}/replay")
-    assert page.status_code == 200
-    assert "Visszajátszás" in page.text
-    assert 'id="rp-events"' in page.text
-    assert 'id="rp-play"' in page.text
+    r = client.get(f"/sessions/{session_id}/download")
+    assert r.status_code == 200
+    assert r.headers["content-type"].startswith("application/json")
+    assert f'filename="session-{session_id}.json"' in r.headers["content-disposition"]
 
-    # The event stream it steps through is the source of truth, in seq order.
-    events = client.get(f"/api/sessions/{session_id}/events").json()
-    assert [e["seq"] for e in events] == sorted(e["seq"] for e in events)
-    assert any(e["type"] == "SessionEnded" for e in events)
+    data = r.json()
+    assert data["session_id"] == session_id
+    assert data["status"] == "ended"
+    assert data["config"]["title"] == TWO_AGENT_SESSION["title"]
+    assert data["message_count"] >= 3
+
+    # The event stream in the file is the full, ordered source of truth.
+    seqs = [e["seq"] for e in data["events"]]
+    assert seqs == list(range(1, len(seqs) + 1))
+    types = {e["type"] for e in data["events"]}
+    assert "SessionCreated" in types
+    assert "SessionEnded" in types
+    assert any(e["type"] == "MessagePosted" for e in data["events"])
+
+    assert client.get("/sessions/not-a-uuid/download").status_code == 404
+
+
+def test_session_delete_flow(client: TestClient) -> None:
+    """A finished session is deleted completely; deletion is refused while active."""
+    session_id = client.post("/api/sessions", json=TWO_AGENT_SESSION).json()["id"]
+    client.post(f"/api/sessions/{session_id}/start")
+    assert _wait_status(client, session_id, {"ended"}) == "ended"
+
+    assert client.delete(f"/api/sessions/{session_id}").status_code == 204
+    assert session_id not in [s["id"] for s in client.get("/api/sessions").json()]
+    assert client.get(f"/api/sessions/{session_id}").status_code == 404
+    assert client.get(f"/sessions/{session_id}/download").status_code == 404
+    assert client.get(f"/sessions/{session_id}").status_code == 404
+
+    # Refused while the session is still active (paused on a pending human turn).
+    body = {
+        "title": "Delete guard",
+        "topic": "T",
+        "participants": [{"agent": "ai_optimist"}, {"human": "Sándor"}],
+        "stop": {"max_rounds": 5, "max_cost_usd": 5.0},
+    }
+    guard = client.post("/api/sessions", json=body).json()["id"]
+    client.post(f"/api/sessions/{guard}/start")
+    assert _wait_status(client, guard, {"running", "ended"}, timeout=10) in {"running", "ended"}
+    if client.get(f"/api/sessions/{guard}").json()["status"] != "running":
+        assert client.delete(f"/api/sessions/{guard}").status_code == 204
+        return
+    assert client.post(f"/api/sessions/{guard}/pause").status_code == 200
+    assert client.delete(f"/api/sessions/{guard}").status_code == 409
+    assert client.post(f"/api/sessions/{guard}/stop").status_code == 200
+    assert _wait_status(client, guard, {"ended"}, timeout=10) == "ended"
+    assert client.delete(f"/api/sessions/{guard}").status_code == 204
+    assert guard not in [s["id"] for s in client.get("/api/sessions").json()]
+
+    assert client.delete("/api/sessions/not-a-uuid").status_code == 404
 
 
 def test_agent_inspector_timeline(tmp_path: Path) -> None:
@@ -567,7 +728,7 @@ def test_agent_inspector_timeline(tmp_path: Path) -> None:
         api = c.get(f"/api/sessions/{sid}/agents/ai_optimist")
         assert api.status_code == 200, api.text
         data = api.json()
-        assert data["persona"]["name"] == "Tóth Lilla"
+        assert data["persona"]["name"] == "Lily Carter"
         assert data["drift_mode"] == "free"
         assert data["current"]["stances"]["q1"]["position"] == "disclose-always"
         assert data["current"]["attitudes"]["skeptic_methodologist"] == 0.6
@@ -578,7 +739,7 @@ def test_agent_inspector_timeline(tmp_path: Path) -> None:
 
         page = c.get(f"/sessions/{sid}/agents/ai_optimist")
         assert page.status_code == 200
-        for needle in ("Tóth Lilla", "Drift-idővonal", "disclose-always", "persuaded"):
+        for needle in ("Lily Carter", "Drift timeline", "disclose-always", "persuaded"):
             assert needle in page.text, needle
 
         # Unknown agent / session 404.
@@ -592,7 +753,7 @@ def test_session_template_save_list_get_delete(client: TestClient) -> None:
         "title": "Template debate",
         "topic": "Is LLM co-authorship acceptable?",
         "language": "hu",
-        "questions": "Feltüntethető-e egy LLM?",
+        "questions": "Can an LLM be listed as an author?",
         "agents": ["ai_moderator", "ai_optimist"],
         "humans": "",
         "moderator": "ai_moderator",
@@ -661,7 +822,7 @@ def test_builder_page_lists_templates(client: TestClient) -> None:
     page = client.get("/sessions/new")
     assert page.status_code == 200
     assert "Visible template" in page.text
-    assert "Mentés sablonként" in page.text
+    assert "Save as template" in page.text
 
 
 def test_session_template_api_errors(client: TestClient) -> None:

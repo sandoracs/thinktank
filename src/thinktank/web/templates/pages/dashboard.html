@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Sessions</h1>
+<p class="actions">
+  <a class="btn btn-primary" href="/sessions/new">+ New session</a>
+  <input type="search" id="session-search" class="search" placeholder="Search sessions…" aria-label="Search sessions">
+</p>
+<table class="grid">
+  <thead>
+    <tr><th>Title</th><th>Status</th><th>Round</th><th>Message</th><th>Cost</th></tr>
+  </thead>
+  <tbody>
+    {% for s in sessions %}
+    <tr>
+      <td><a href="/sessions/{{ s.id }}">{{ s.title }}</a></td>
+      <td><span class="status-chip status-{{ s.status }}">{{ s.status }}</span></td>
+      <td>{{ s.round }}</td>
+      <td>{{ s.messages }}</td>
+      <td>${{ '%.2f'|format(s.cost) }}</td>
+    </tr>
+    {% else %}
+    <tr id="empty-state"><td colspan="5" class="muted">No sessions yet. Start the <a href="/sessions/new">first debate</a>.</td></tr>
+    {% endfor %}
+    <tr id="no-matches" hidden><td colspan="5" class="muted">No sessions match the search.</td></tr>
+  </tbody>
+</table>
+{% endblock %}
+{% block scripts %}
+<script>
+  (function () {
+    var input = document.getElementById('session-search');
+    var empty = document.getElementById('empty-state');
+    var noMatches = document.getElementById('no-matches');
+    if (!input) { return; }
+    var dataRows = Array.prototype.slice.call(document.querySelectorAll('tbody tr')).filter(function (r) {
+      return r.id !== 'empty-state' && r.id !== 'no-matches';
+    });
+    function apply() {
+      var q = input.value.trim().toLowerCase();
+      var visible = 0;
+      dataRows.forEach(function (r) {
+        var show = !q || r.textContent.toLowerCase().indexOf(q) !== -1;
+        r.hidden = !show;
+        if (show) { visible++; }
+      });
+      if (empty) { empty.hidden = q !== ''; }
+      noMatches.hidden = !(q !== '' && visible === 0);
+    }
+    input.addEventListener('input', apply);
+    input.addEventListener('change', apply);
+  })();
+</script>
+{% endblock %}

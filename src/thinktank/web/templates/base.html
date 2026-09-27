@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title }} · ThinkTank</title>
+  <link rel="stylesheet" href="/static/app.css?v={{ static_version }}">
+  <script src="/static/htmx.min.js?v={{ static_version }}" defer></script>
+</head>
+<body>
+  <nav class="topnav">
+    <a class="brand" href="/">ThinkTank</a>
+    <a href="/" class="{{ 'active' if active == 'dashboard' else '' }}">Boardroom</a>
+    <a href="/agents" class="{{ 'active' if active == 'agents' else '' }}">Persona Templates</a>
+    <a href="/settings" class="{{ 'active' if active == 'settings' else '' }}">Settings</a>
+  </nav>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

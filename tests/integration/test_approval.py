@@ -14,10 +14,10 @@ from pathlib import Path
 
 import pytest
 
-from roundtable.core.manager import SessionManager
-from roundtable.core.state import SessionState
-from roundtable.domain.events import Event, EventType
-from roundtable.domain.models import (
+from thinktank.core.manager import SessionManager
+from thinktank.core.state import SessionState
+from thinktank.domain.events import Event, EventType
+from thinktank.domain.models import (
     AgentConfig,
     DebateQuestion,
     DriftConfig,
@@ -27,10 +27,10 @@ from roundtable.domain.models import (
     SessionConfig,
     StopConditions,
 )
-from roundtable.llm.client import ChatMessage
-from roundtable.llm.fake import FakeLLM
-from roundtable.storage.db import init_db, make_engine, make_session_factory
-from roundtable.storage.repositories import EventStore
+from thinktank.llm.client import ChatMessage
+from thinktank.llm.fake import FakeLLM
+from thinktank.storage.db import init_db, make_engine, make_session_factory
+from thinktank.storage.repositories import EventStore
 
 AGENT_ID = "skeptic"
 Q1 = "q1"

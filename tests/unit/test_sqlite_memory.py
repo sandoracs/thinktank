@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from roundtable.domain.models import Layer
-from roundtable.memory.embeddings import FakeEmbeddingProvider
-from roundtable.memory.sqlite import SQLiteMemoryBackend, fts_query
-from roundtable.storage.db import init_db, init_memory_tables, make_engine, stored_embedding_model
+from thinktank.domain.models import Layer
+from thinktank.memory.embeddings import FakeEmbeddingProvider
+from thinktank.memory.sqlite import SQLiteMemoryBackend, fts_query
+from thinktank.storage.db import init_db, init_memory_tables, make_engine, stored_embedding_model
 
 
 class NamedFake(FakeEmbeddingProvider):

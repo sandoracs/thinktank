@@ -11,11 +11,11 @@ import json
 
 import pytest
 
-from roundtable.core.state import SessionState
-from roundtable.domain.models import ParticipantRef, SessionConfig
-from roundtable.llm.client import ChatMessage, Purpose
-from roundtable.llm.fake import FakeLLM
-from roundtable.strategies.bidding import Bidding
+from thinktank.core.state import SessionState
+from thinktank.domain.models import ParticipantRef, SessionConfig
+from thinktank.llm.client import ChatMessage, Purpose
+from thinktank.llm.fake import FakeLLM
+from thinktank.strategies.bidding import Bidding
 
 BIDS = {"a": 0.5, "b": 0.9, "c": 0.7}
 

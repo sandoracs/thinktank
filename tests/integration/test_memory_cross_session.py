@@ -1,7 +1,7 @@
 """Cross-session memory integration test (DESIGN.md §18 M3 acceptance).
 
-M3 "kész, ha": *egy második sessionben az agent hivatkozik az előző
-session tanulságára* — a second session's agent must have the previous
+M3 "done when": *in a second session, the agent references the previous
+session's lesson* — the second session's agent must have the previous
 session's distilled lesson in its context.
 
 Both sessions run against :class:`FakeLLM` (deterministic, offline). The
@@ -17,8 +17,8 @@ from pathlib import Path
 
 import pytest
 
-from roundtable.core.manager import SessionManager
-from roundtable.domain.models import (
+from thinktank.core.manager import SessionManager
+from thinktank.domain.models import (
     AgentConfig,
     DebateQuestion,
     Layer,
@@ -27,13 +27,13 @@ from roundtable.domain.models import (
     SessionConfig,
     StopConditions,
 )
-from roundtable.llm.client import ChatMessage
-from roundtable.llm.fake import FakeLLM
-from roundtable.memory.distill import EPISODIC_SYSTEM
-from roundtable.memory.embeddings import FakeEmbeddingProvider
-from roundtable.memory.sqlite import SQLiteMemoryBackend
-from roundtable.storage.db import init_db, init_memory_tables, make_engine, make_session_factory
-from roundtable.storage.repositories import EventStore
+from thinktank.llm.client import ChatMessage
+from thinktank.llm.fake import FakeLLM
+from thinktank.memory.distill import EPISODIC_SYSTEM
+from thinktank.memory.embeddings import FakeEmbeddingProvider
+from thinktank.memory.sqlite import SQLiteMemoryBackend
+from thinktank.storage.db import init_db, init_memory_tables, make_engine, make_session_factory
+from thinktank.storage.repositories import EventStore
 
 AGENT_ID = "coauthor_agent"
 LESSON_MARKER = "EVIDENCE_BASE_WEAK"
@@ -61,10 +61,10 @@ def _agent() -> dict[str, AgentConfig]:
             id=AGENT_ID,
             model="fake-model",
             persona=PersonaCore(
-                name="Kőváry Péter",
-                role="tudományos szerkesztő",
-                values=["szigorú forráskövetelés"],
-                boundaries=["nem ad orvosi tanácsot"],
+                name="Peter Stone",
+                role="science editor",
+                values=["strict sourcing"],
+                boundaries=["does not give medical advice"],
             ),
         )
     }

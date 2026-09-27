@@ -1,8 +1,8 @@
-"""Reciprocal Rank Fusion unit tests (DESIGN.md §17: RRF-fúzió)."""
+"""Reciprocal Rank Fusion unit tests (DESIGN.md §17: RRF fusion)."""
 
 from __future__ import annotations
 
-from roundtable.memory.base import RRF_K, reciprocal_rank_fusion
+from thinktank.memory.base import RRF_K, reciprocal_rank_fusion
 
 
 def test_single_ranking_preserves_order() -> None:

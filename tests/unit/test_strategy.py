@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import pytest
 
-from roundtable.core.state import SessionState
-from roundtable.domain.events import EventType, make_event
-from roundtable.domain.models import ParticipantRef, SessionConfig
-from roundtable.strategies.round_robin import RoundRobin
+from thinktank.core.state import SessionState
+from thinktank.domain.events import EventType, make_event
+from thinktank.domain.models import ParticipantRef, SessionConfig
+from thinktank.strategies.round_robin import RoundRobin
 
 
 def _config(ids: list[str]) -> SessionConfig:

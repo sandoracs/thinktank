@@ -1,0 +1,7 @@
+<div class="round-divider">
+  {% if event.type.value == "RoundStarted" %}
+    <span class="round-label">=== Round {{ event.payload.get('round') }} ===</span>
+  {% else %}
+    <span class="round-label">Round {{ event.payload.get('round') }} ended</span>
+  {% endif %}
+</div>

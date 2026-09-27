@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from roundtable.core.manager import SessionManager
-from roundtable.domain.events import ConsistencyViolationPayload, EventType, MessagePostedPayload
-from roundtable.domain.models import (
+from thinktank.core.manager import SessionManager
+from thinktank.domain.events import ConsistencyViolationPayload, EventType, MessagePostedPayload
+from thinktank.domain.models import (
     AgentConfig,
     DebateQuestion,
     ParticipantRef,
@@ -22,10 +22,10 @@ from roundtable.domain.models import (
     SessionConfig,
     StopConditions,
 )
-from roundtable.llm.client import ChatMessage, Purpose
-from roundtable.llm.fake import FakeLLM
-from roundtable.storage.db import init_db, make_engine, make_session_factory
-from roundtable.storage.repositories import EventStore
+from thinktank.llm.client import ChatMessage, Purpose
+from thinktank.llm.fake import FakeLLM
+from thinktank.storage.db import init_db, make_engine, make_session_factory
+from thinktank.storage.repositories import EventStore
 
 PERSONA = PersonaCore(
     name="A",

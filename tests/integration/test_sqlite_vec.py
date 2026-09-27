@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 import sqlite_vec
 
-from roundtable.storage.db import init_db, make_engine
+from thinktank.storage.db import init_db, make_engine
 
 
 @pytest.mark.asyncio

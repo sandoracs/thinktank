@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Settings</h1>
+<p class="hint">
+  Everything in the <code>.env</code> file — saving writes directly into it (THINKTANK_ keys).
+  Fields marked "restart" wait for a hub restart; the rest apply after saving.
+</p>
+{% if saved %}<p class="saved-note">Settings saved to the <code>.env</code> file.</p>{% endif %}
+<form method="post" action="/settings" class="builder" id="settings-form">
+  {% for section in sections %}
+  <fieldset>
+    <legend>{{ section.title }}</legend>
+    {% for f in section.fields %}
+      {% if f.type == 'bool' %}
+      <label class="check">
+        <input type="checkbox" name="{{ f.name }}" value="on" {% if values[f.name] %}checked{% endif %}>
+        {{ f.label }}
+      </label>
+      {% else %}
+      <label>{{ f.label }}
+        {% if f.type == 'select' %}
+        <select name="{{ f.name }}">
+          {% for opt in f.options %}
+          {% if opt is mapping %}
+          <option value="{{ opt.value }}" {% if values[f.name] == opt.value %}selected{% endif %}>{{ opt.label }}</option>
+          {% else %}
+          <option value="{{ opt }}" {% if values[f.name] == opt %}selected{% endif %}>{{ opt }}</option>
+          {% endif %}
+          {% endfor %}
+        </select>
+        {% else %}
+        <input name="{{ f.name }}" type="{{ 'number' if f.type == 'number' else 'text' }}" value="{{ values[f.name] }}" step="any" min="0">
+        {% endif %}
+      </label>
+      {% endif %}
+      {% if f.hint %}<p class="hint">{{ f.hint }}</p>{% endif %}
+      {% if not f.live %}<p class="hint restart-hint" data-name="{{ f.name }}" hidden>⟳ takes effect after a hub restart</p>{% endif %}
+    {% endfor %}
+  </fieldset>
+  {% if section.title == 'Storage' %}
+  <fieldset>
+    <legend>LLM providers</legend>
+    <p class="hint">
+      Registered providers are endpoints you reference in a model code by their id:
+      <code>&lt;id&gt;/&lt;model&gt;</code> (e.g. <code>myopenai/gpt-4o</code>) — in an agent template or the
+      default model. Keys are shown masked only.
+    </p>
+    {% if providers %}
+    <table class="grid">
+      <tr><th>ID</th><th>Type</th><th>Base URL</th><th>API key</th><th>Model(s)</th><th></th></tr>
+      {% for p in providers %}
+      <tr>
+        <td><code>{{ p.id }}</code></td>
+        <td>{{ p.provider }}</td>
+        <td>{{ p.base_url or "–" }}</td>
+        <td>{{ p.key_masked() or "–" }}</td>
+        <td>{{ p.models|join(', ') or "–" }}</td>
+        <td>
+          <a class="btn" href="/settings?edit={{ p.id }}">Edit</a>
+          <button type="button" class="btn provider-delete" data-id="{{ p.id }}" style="color: #b3403a;">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </table>
+    {% else %}
+    <p class="hint">No providers registered yet — env-var keys (e.g. <code>OPENAI_API_KEY</code>) remain in effect.</p>
+    {% endif %}
+    {% if edit_provider %}
+    <p class="hint">
+      <b>Editing "{{ edit_provider.id }}"</b> — Save overwrites this row.
+      The ID cannot be changed: to use a new id, delete this provider and create a new one.
+    </p>
+    {% endif %}
+    <div class="row" style="align-items: flex-end;">
+      <label style="min-width: 150px;">ID
+        <input name="prov_id" placeholder="e.g. myopenai"
+               value="{{ edit_provider.id if edit_provider else '' }}"
+               {% if edit_provider %}readonly{% endif %}
+               title="{% if edit_provider %}The ID cannot be changed{% else %}lowercase letters, digits, - or _ ; first part of the model code: &lt;id&gt;/&lt;model&gt;{% endif %}">
+      </label>
+      <label style="min-width: 220px;">Type
+        <select name="prov_type">
+          {% for fam, label in provider_types %}
+          <option value="{{ fam }}" {% if edit_provider and edit_provider.provider == fam %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Base URL
+        <input name="prov_base_url" placeholder="e.g. https://api.example.com/v1"
+               value="{{ edit_provider.base_url or '' if edit_provider else '' }}">
+      </label>
+      <label style="min-width: 180px;">API key
+        <input name="prov_api_key" type="password" placeholder="sk-..."
+               title="When editing, leave empty to keep the existing key">
+      </label>
+      <div class="models-field">
+        <p class="picker-title">Model(s)
+          <button type="button" class="btn" id="models-refresh" style="margin-left: 8px;">Refresh</button>
+          <span id="models-status" class="hint"></span>
+        </p>
+        <div id="models-list" class="models-list"></div>
+        <input name="prov_models" id="prov_models" placeholder="Other models, comma-separated (e.g. gpt-4o, gpt-4o-mini) — saved together with the checked ones"
+               value="{{ edit_provider.models|join(', ') if edit_provider else '' }}"
+               title="These appear in the agent form's model dropdown: &lt;id&gt;/&lt;model&gt;">
+      </div>
+      <p class="actions" style="margin: 0;">
+        <button type="button" class="btn btn-primary" id="provider-add">Save</button>
+        {% if edit_provider %}<a class="btn" href="/settings">New provider mode</a>{% endif %}
+      </p>
+    </div>
+  </fieldset>
+  {% endif %}
+  {% endfor %}
+  <p class="actions">
+    <button type="submit" class="btn btn-primary">Save</button>
+    <button type="button" class="btn" id="restart-btn" title="Save, then the hub restarts itself">Save and restart</button>
+    <a class="btn" href="/">Cancel</a>
+  </p>
+</form>
+<script>
+  const restart = document.getElementById('restart-btn');
+  if (restart) {
+    restart.addEventListener('click', async () => {
+      restart.disabled = true;
+      try {
+        const form = document.getElementById('settings-form');
+        const r = await fetch('/settings/restart', { method: 'POST', body: new FormData(form) });
+        const html = await r.text();
+        if (r.ok) {
+          document.open();
+          document.write(html);
+          document.close();
+        } else {
+          alert('Save failed (' + r.status + ')');
+          restart.disabled = false;
+        }
+      } catch (e) {
+        alert('Save failed: ' + e);
+        restart.disabled = false;
+      }
+    });
+  }
+  const settingsForm = document.getElementById('settings-form');
+  if (settingsForm) {
+    settingsForm.querySelectorAll('.restart-hint').forEach((hint) => {
+      const control = settingsForm.querySelector('[name="' + hint.dataset.name + '"]');
+      if (!control) return;
+      const initial = control.type === 'checkbox' ? control.checked : control.value;
+      const current = () => (control.type === 'checkbox' ? control.checked : control.value);
+      const update = () => { hint.hidden = current() === initial; };
+      control.addEventListener('input', update);
+      control.addEventListener('change', update);
+      update();
+    });
+  }
+  const addBtn = document.getElementById('provider-add');
+  if (addBtn) {
+    addBtn.addEventListener('click', async () => {
+      const fs = addBtn.closest('fieldset');
+      const fd = new URLSearchParams();
+      fd.set('id', fs.querySelector('[name="prov_id"]').value);
+      fd.set('provider', fs.querySelector('[name="prov_type"]').value);
+      fd.set('base_url', fs.querySelector('[name="prov_base_url"]').value);
+      fd.set('api_key', fs.querySelector('[name="prov_api_key"]').value);
+      fd.set('models', fs.querySelector('[name="prov_models"]').value);
+      const r = await fetch('/settings/providers', { method: 'POST', body: fd });
+      if (r.ok) {
+        location.reload();
+      } else {
+        alert('Save failed (' + r.status + '): ' + (await r.text()));
+      }
+    });
+  }
+  const PROVIDER_DEFAULT_BASES = {{ provider_defaults | tojson }};
+  const typeSel = document.querySelector('select[name="prov_type"]');
+  const baseInput = document.querySelector('input[name="prov_base_url"]');
+  if (typeSel && baseInput) {
+    const applyDefaultBase = (always = false) => {
+      const d = PROVIDER_DEFAULT_BASES[typeSel.value];
+      if (d && (always || !baseInput.value)) baseInput.value = d;
+    };
+    applyDefaultBase();
+    typeSel.addEventListener('change', () => applyDefaultBase(true));
+  }
+  const modelsInput = document.getElementById('prov_models');
+  const modelsList = document.getElementById('models-list');
+  const modelsStatus = document.getElementById('models-status');
+  const refreshBtn = document.getElementById('models-refresh');
+  if (modelsInput && modelsList && refreshBtn) {
+    const currentModels = () => modelsInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+    const listIds = () => [...modelsList.querySelectorAll('input')].map((cb) => cb.value);
+    const syncFromList = () => {
+      const checked = [...modelsList.querySelectorAll('input:checked')].map((cb) => cb.value);
+      const ids = new Set(listIds());
+      const others = currentModels().filter((m) => !ids.has(m));
+      modelsInput.value = [...others, ...checked].join(', ');
+    };
+    const syncToList = () => {
+      const sel = new Set(currentModels());
+      modelsList.querySelectorAll('input').forEach((cb) => { cb.checked = sel.has(cb.value); });
+    };
+    const renderModels = (models) => {
+      modelsList.innerHTML = '';
+      for (const m of models) {
+        const lab = document.createElement('label');
+        lab.className = 'check';
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = m;
+        cb.addEventListener('change', syncFromList);
+        lab.append(cb, document.createTextNode(' ' + m));
+        modelsList.append(lab);
+      }
+      syncToList();
+    };
+    const refreshModels = async () => {
+      const fs = addBtn.closest('fieldset');
+      const body = {};
+      const idInput = fs.querySelector('[name="prov_id"]');
+      if (idInput.readOnly) {
+        body.id = idInput.value;
+      } else {
+        body.provider = fs.querySelector('[name="prov_type"]').value;
+        body.base_url = fs.querySelector('[name="prov_base_url"]').value;
+        body.api_key = fs.querySelector('[name="prov_api_key"]').value;
+      }
+      modelsStatus.textContent = 'Loading…';
+      try {
+        const r = await fetch('/api/provider-models', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(data.detail || 'HTTP ' + r.status);
+        renderModels(data.models || []);
+        modelsStatus.textContent = (data.models || []).length + ' models in the list';
+      } catch (e) {
+        modelsStatus.textContent = 'Error: ' + e.message;
+      }
+    };
+    refreshBtn.addEventListener('click', refreshModels);
+    modelsInput.addEventListener('input', syncToList);
+    const typeSelEl = addBtn.closest('fieldset').querySelector('[name="prov_type"]');
+    if (typeSelEl) typeSelEl.addEventListener('change', refreshModels);
+    const idEl = addBtn.closest('fieldset').querySelector('[name="prov_id"]');
+    if (idEl && idEl.readOnly) refreshModels();
+  }
+  document.querySelectorAll('.provider-delete').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      const r = await fetch('/settings/providers/delete', {
+        method: 'POST',
+        body: new URLSearchParams({ id: btn.dataset.id })
+      });
+      if (r.ok) {
+        location.reload();
+      } else {
+        alert('Delete failed (' + r.status + ')');
+      }
+    });
+  });
+</script>
+{% endblock %}

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from roundtable.domain.events import OPEN_PAYLOAD, PAYLOAD_MODELS, EventType, RoundPayload
+from thinktank.domain.events import OPEN_PAYLOAD, PAYLOAD_MODELS, EventType, RoundPayload
 
 
 def test_every_event_type_is_covered() -> None:

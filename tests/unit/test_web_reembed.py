@@ -1,13 +1,13 @@
 """Tests for the embedding model-mismatch helper (DESIGN.md §11, M3).
 
 The hub signals an error at startup when stored memory vectors were produced by
-a different model than the one now configured; ``roundtable reembed`` is the
+a different model than the one now configured; ``thinktank reembed`` is the
 remedy. The pure helper decides when to signal.
 """
 
 from __future__ import annotations
 
-from roundtable.web.app import embedding_mismatch_message
+from thinktank.web.app import embedding_mismatch_message
 
 
 def test_no_mismatch_when_matching() -> None:

@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% set cfg = config if config else none %}
+{% set title = cfg.title if cfg else '' %}
+{% set topic = cfg.topic if cfg else '' %}
+{% set language = cfg.language if cfg else 'en' %}
+{% set questions = (cfg.questions | map(attribute='text') | join('\n')) if cfg else '' %}
+{% set sel_agents = (cfg.participants | selectattr('agent', 'ne', none) | map(attribute='agent') | list) if cfg else [] %}
+{% set humans = (cfg.participants | selectattr('human', 'ne', none) | map(attribute='human') | join(', ')) if cfg else '' %}
+{% set moderator = (cfg.moderator or '') if cfg else '' %}
+{% set strategy = (cfg.strategy.name if cfg.strategy else 'round_robin') if cfg else 'round_robin' %}
+{% set params_json = ((cfg.strategy.params if cfg.strategy else {}) | tojson) if cfg else '{}' %}
+{% set max_rounds = (cfg.stop.max_rounds if cfg.stop.max_rounds is not none else 3) if cfg else 3 %}
+{% set max_cost = (cfg.stop.max_cost_usd if cfg.stop.max_cost_usd is not none else 1.5) if cfg else 1.5 %}
+{% block content %}
+<h1>{% if cfg %}Edit session{% else %}Session builder{% endif %}</h1>
+<form method="post" action="{{ form_action if form_action else '/sessions' }}" class="builder">
+  <label>Title
+    <input name="title" required placeholder="e.g. Can an LLM be a co-author?" value="{{ title }}">
+  </label>
+  <label>Topic
+    <textarea name="topic" rows="3" required placeholder="Subject and framing of the debate...">{{ topic }}</textarea>
+  </label>
+  <div class="row">
+    <label>Language
+      <select name="language">
+        <option value="hu" {{ 'selected' if language == 'hu' else '' }}>Hungarian</option>
+        <option value="en" {{ 'selected' if language == 'en' else '' }}>English</option>
+      </select>
+    </label>
+    <label>Debate questions (one per line)
+      <textarea name="questions" rows="3" class="grow" placeholder="Can an LLM be listed as an author?&#10;Must AI usage be disclosed?">{{ questions }}</textarea>
+    </label>
+  </div>
+
+  <fieldset>
+    <legend>Participants</legend>
+    <div class="agent-picker">
+      <p class="picker-title">Agents</p>
+      {% for a in agents %}
+      <label class="check">
+        <input type="checkbox" name="agents" value="{{ a.id }}" {{ 'checked' if a.id in sel_agents else '' }}>
+        {{ a.persona.name }} <span class="muted">— {{ a.persona.role }}</span>
+      </label>
+      {% endfor %}
+    </div>
+    <label>Humans (comma-separated)
+      <input name="humans" placeholder="e.g. John" value="{{ humans }}">
+    </label>
+    <label>Moderator
+      <select name="moderator">
+        <option value="">— (no AI moderator) —</option>
+        {% for a in agents %}
+        <option value="{{ a.id }}" {{ 'selected' if a.id == moderator else '' }}>{{ a.persona.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Round flow and stopping</legend>
+    <div class="row">
+      <label>Speaking strategy
+        <select name="strategy" id="strategy-select">
+          {% for s in strategies %}
+          <option value="{{ s }}" {{ 'selected' if s == strategy else '' }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <label>Max. rounds
+        <input name="max_rounds" type="number" min="1" value="{{ max_rounds }}" class="narrow">
+      </label>
+      <label>Max. cost (USD)
+        <input name="max_cost_usd" type="number" min="0" step="0.1" value="{{ max_cost }}" class="narrow">
+      </label>
+    </div>
+    <div id="strategy-params" class="strategy-params"></div>
+    <input type="hidden" name="strategy_params" id="strategy-params-json" value="{{ params_json }}">
+  </fieldset>
+
+  <fieldset>
+    <legend>Template</legend>
+    <div class="row">
+      <label>Load a saved template
+        <select id="session-template-select">
+          <option value="">— (empty) —</option>
+          {% for t in session_templates %}
+          <option value="{{ t.id }}">{{ t.title }} ({{ t.id }})</option>
+          {% endfor %}
+        </select>
+        <button type="button" class="btn" id="load-template-btn">Load</button>
+      </label>
+      <label>Template ID
+        <input name="template_id" placeholder="e.g. llm-coauthor-v2" class="narrow">
+      </label>
+    </div>
+  </fieldset>
+
+  <p class="actions">
+    {% if cfg %}<button type="submit" class="btn btn-primary">Save</button>{% else %}<button type="submit" class="btn btn-primary">Create and start session</button>{% endif %}
+    <button type="submit" name="save_as_template" value="1" class="btn">Save as template</button>
+    <a class="btn" href="/">Cancel</a>
+  </p>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(function () {
+  const select = document.getElementById("strategy-select");
+  const host = document.getElementById("strategy-params");
+  const jsonInput = document.getElementById("strategy-params-json");
+  if (!select || !host || !jsonInput) return;
+
+  let schemas = {};
+  let saved = {};
+  try { saved = JSON.parse(jsonInput.value || "{}") || {}; } catch (e) { saved = {}; }
+
+  function render(name) {
+    const schema = (schemas[name] && schemas[name].params_schema) || null;
+    host.innerHTML = "";
+    const fields = (schema && schema.properties) || {};
+    const keys = Object.keys(fields);
+    if (keys.length === 0) {
+      return; // no param schema; keep whatever the hidden input already holds
+    }
+    const values = {};
+    const row = document.createElement("div");
+    row.className = "row strategy-param-row";
+    for (const key of keys) {
+      const spec = fields[key];
+      const label = document.createElement("label");
+      label.textContent = key;
+      const input = document.createElement("input");
+      input.name = "sp_" + key;
+      input.className = "narrow";
+      const initVal = (key, spec) => (saved[key] !== undefined ? saved[key] : spec.default);
+      if (spec.type === "number" || spec.type === "integer") {
+        input.type = "number";
+        const v = initVal(key, spec);
+        if (v !== undefined) input.value = v;
+      } else if (spec.type === "boolean") {
+        input.type = "checkbox";
+        input.checked = initVal(key, spec) ? true : false;
+      } else {
+        input.type = "text";
+        const v = initVal(key, spec);
+        if (v !== undefined) input.value = v;
+      }
+      label.appendChild(" ");
+      label.appendChild(input);
+      row.appendChild(label);
+    }
+    host.appendChild(row);
+    // Keep the hidden JSON in sync with the rendered inputs.
+    const sync = () => {
+      const out = {};
+      for (const key of keys) {
+        const el = host.querySelector('[name="sp_' + key + '"]');
+        if (!el) continue;
+        const spec = fields[key] || {};
+        if (spec.type === "boolean") out[key] = el.checked;
+        else if (spec.type === "number" || spec.type === "integer") {
+          out[key] = el.value === "" ? undefined : Number(el.value);
+        } else out[key] = el.value;
+      }
+      jsonInput.value = JSON.stringify(out);
+      try { saved = JSON.parse(jsonInput.value) || {}; } catch (e) { saved = {}; }
+    };
+    row.addEventListener("input", sync);
+    row.addEventListener("change", sync);
+    // initial sync
+    setTimeout(sync, 0);
+  }
+
+  select.addEventListener("change", () => render(select.value));
+
+  fetch("/api/plugins")
+    .then((r) => r.json())
+    .then((data) => {
+      for (const s of data.turn_strategies || []) {
+        schemas[s.name] = s;
+      }
+      render(select.value);
+    })
+    .catch(() => {
+      host.innerHTML = '<span class="hint">(strategy params unavailable)</span>';
+    });
+})();
+</script>
+
+<script>
+(function () {
+  const btn = document.getElementById("load-template-btn");
+  const select = document.getElementById("session-template-select");
+  if (!btn || !select) return;
+
+  function setField(name, value) {
+    const el = document.querySelector('[name="' + name + '"]');
+    if (el) el.value = value == null ? "" : String(value);
+  }
+
+  function applyTemplate(cfg) {
+    setField("title", cfg.title);
+    setField("topic", cfg.topic);
+    setField("language", cfg.language);
+    const questions = (cfg.questions || []).map((q) => q.text).join("\n");
+    setField("questions", questions);
+
+    const agents = (cfg.participants || []).filter((p) => p.agent).map((p) => p.agent);
+    const humans = (cfg.participants || []).filter((p) => p.human).map((p) => p.human);
+    document.querySelectorAll('input[name="agents"]').forEach((cb) => {
+      cb.checked = agents.includes(cb.value);
+    });
+    setField("humans", humans.join(", "));
+    setField("moderator", cfg.moderator);
+
+    const strategy = (cfg.strategy && cfg.strategy.name) || "round_robin";
+    setField("strategy", strategy);
+    const strategySelect = document.getElementById("strategy-select");
+    if (strategySelect && strategySelect.value !== strategy) {
+      strategySelect.value = strategy;
+      strategySelect.dispatchEvent(new Event("change"));
+    }
+    const paramsJson = document.getElementById("strategy-params-json");
+    if (paramsJson) paramsJson.value = JSON.stringify((cfg.strategy && cfg.strategy.params) || {});
+
+    const stop = cfg.stop || {};
+    setField("max_rounds", stop.max_rounds);
+    setField("max_cost_usd", stop.max_cost_usd);
+  }
+
+  btn.addEventListener("click", () => {
+    const id = select.value;
+    if (!id) return;
+    fetch("/api/session-templates/" + encodeURIComponent(id))
+      .then((r) => {
+        if (!r.ok) throw new Error("template not found");
+        return r.json();
+      })
+      .then(applyTemplate)
+      .catch((e) => alert("Failed to load template: " + e.message));
+  });
+})();
+</script>
+{% endblock %}

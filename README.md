@@ -88,28 +88,19 @@ panel.
 
 ## M6: export, approvals, download
 
-- **Export** — analysis-ready event stream:
-  - API: `GET /api/sessions/{id}/export?format=jsonl|csv`
-  - CLI: `thinktank export <session-id> [--format jsonl|csv] [--out file]`
-- **Approvals** — APPROVED drift mode turns a reflection proposal into a pending
-  request; decide from the live table or the API:
-  - `GET  /api/sessions/{id}/approvals`
-  - `POST /api/sessions/{id}/approvals/{agent}`  body `{"decision": "approve"|"reject"}`
-- **Download** — the full session (config + complete event stream) as a single
-  JSON file; the "Download" button in the live table, or directly:
-  `GET /sessions/{id}/download`
+- **Export** — analysis-ready event stream of the debate (API and CLI: see
+  [API](#api)).
+- **Approvals** — APPROVED drift mode turns a reflection proposal into a
+  pending request; decide from the live table or the API (see [API](#api)).
+- **Download** — the full session (config + complete event stream) as a
+  single JSON file; the "Download" button in the live table, or the API
+  (see [API](#api)).
 
 ## Remote agents (M7)
 
 An external service can join the table over a fixed HTTP protocol. Point a
 `ParticipantRef(remote=...)` seat at a base URL; the engine posts the context
-and takes the reply as the message:
-
-```
-POST {url}/speak         -> {"content": "..."}
-POST {url}/observe       -> {}
-POST {url}/session_end   -> {}
-```
+and takes the reply as the message (protocol: see [API](#api)).
 
 A failing `speak` is recorded as an `Error` + `TurnSkipped` (the debate
 continues); `observe`/`session_end` are best-effort. See
@@ -136,13 +127,11 @@ by default because it is an extra model call.
 
 ## Persona templates CRUD
 
-Create, edit, and delete agent templates:
-- **Library:** `GET /agents` — every agent card is clickable and opens its editor.
-- **Create:** `GET /agents/new` → `POST /agents`
-- **Edit:** `GET /agents/{id}/edit` → `POST /agents/{id}` (path and form id must match).
-  A small ✕ button in the bottom-right corner deletes the agent; the app asks
-  for confirmation first, then `DELETE /api/agents/{id}` and redirects to the library.
-- **API:** `POST /api/agents`, `PUT /api/agents/{id}`, `DELETE /api/agents/{id}`
+Create, edit, and delete agent templates from the library (`/agents`) —
+every agent card is clickable and opens its editor. A small ✕ button in the
+bottom-right corner deletes the agent; the app asks for confirmation first,
+then redirects to the library. Endpoints: see [API](#api).
+
 - **Persona age:** the persona core has a free-text `age` field ("Age" in
   the form); it renders into the system prompt (`Age: …`) and on the library card.
 - **Color:** each agent gets one stable random color at creation (existing
@@ -153,44 +142,96 @@ Create, edit, and delete agent templates:
 ## Session templates (save-as / prefill)
 
 Save a builder form as a reusable session configuration, then prefill the
-builder from any saved template (DESIGN §7 `session_templates`, §15 "save as template"):
-- Builder: `POST /sessions` with `save_as_template=1` (optionally `template_id`);
-  the builder lists saved templates and loads one with the "Load" button.
-- API: `GET /api/session-templates`, `GET/POST /api/session-templates[/{id}]`,
-  `DELETE /api/session-templates/{id}`.
+builder from any saved template (DESIGN §7 `session_templates`, §15 "save as
+template"); the builder lists saved templates and loads one with the "Load"
+button. Endpoints: see [API](#api).
 
 ## Session edit and delete
 
 A session that has not started yet can be edited after creation (DESIGN §15 session editing):
 - **Live view:** the "Edit" button — enabled only while the status is
-  `created` (dimmed while running/paused/ended) → `GET /sessions/{id}/edit`.
-- **Edit page:** the builder form prefilled with the stored configuration;
-  "Save" → `POST /sessions/{id}/edit` (303 back to the live view).
+  `created` (dimmed while running/paused/ended).
+- **Edit page:** the builder form prefilled with the stored configuration.
 - **Semantics:** the stored config is replaced and the engine rebuilds from
   the latest config; the event history keeps every event, so an edited session
-  still shows its full history under the newest configuration. `409` once the session has started,
-  `404` for unknown sessions.
-- After a session has run, **Reset** (`POST /api/sessions/{id}/reset`) puts it
-  back to `created`, so it can be edited and started again.
+  still shows its full history under the newest configuration.
+- After a session has run, **Reset** puts it back to `created`, so it can be
+  edited and started again.
 - **Delete:** the "Delete" button in the live table (asks for confirmation
-  first; enabled only when the session is not running) →
-  `DELETE /api/sessions/{id}` — removes the session with its stored
-  conversation (events, messages, persona history, approvals); agent memory
-  is kept. `409` while the session is running/paused (Stop it first),
-  `404` for unknown sessions.
+  first; enabled only when the session is not running) — removes the session
+  with its stored conversation (events, messages, persona history,
+  approvals); agent memory is kept.
+
+Endpoints: see [API](#api).
 
 ## Agent memory search (inspector)
 
 Search an agent's episodic + long-term memory from the agent inspector
-(DESIGN §15 "memory search"):
-- `GET /api/sessions/{id}/agents/{agent}/memory?q=&k=&layer=` (layer:
-  `all` | `episodic` | `long_term`) over the hybrid `MemoryBackend`.
+(DESIGN §15 "memory search") over the hybrid `MemoryBackend`. Endpoint: see
+[API](#api).
 
 ## Agent form: memory + initial state
 
 The agent form (`/agents/new`) exposes the memory settings
 (`working_window`, `summarize_every`, `retrieval_k`, `long_term`) and the
 initial persona state (mood); both round-trip through the agent summary.
+
+## API
+
+Every HTTP endpoint the hub exposes (and the one protocol it calls out to),
+grouped by resource.
+
+### Sessions
+
+- `POST /sessions` — create from the builder form (`save_as_template=1`,
+  optionally `template_id`, to also save it as a session template).
+- `GET /sessions/{id}/edit` → `POST /sessions/{id}/edit` — edit a session
+  that has not started yet (prefilled builder form); replaces the stored
+  config. `409` once the session has started, `404` for unknown sessions.
+- `POST /api/sessions/{id}/reset` — wipe the conversation and restore the
+  session to `created` so it can be edited/started again.
+- `DELETE /api/sessions/{id}` — delete a non-running session and its stored
+  conversation (agent memory is kept). `409` while running/paused, `404` for
+  unknown sessions.
+- `GET /sessions/{id}/download` — the full session (config + complete event
+  stream) as a single JSON file.
+- `GET /api/sessions/{id}/export?format=jsonl|csv` — analysis-ready event
+  stream (CLI equivalent: `thinktank export <session-id> [--format jsonl|csv] [--out file]`).
+
+### Approvals (APPROVED drift mode)
+
+- `GET /api/sessions/{id}/approvals`
+- `POST /api/sessions/{id}/approvals/{agent}` — body `{"decision": "approve"|"reject"}`.
+
+### Agent memory
+
+- `GET /api/sessions/{id}/agents/{agent}/memory?q=&k=&layer=` — search
+  episodic/long-term memory (`layer`: `all` | `episodic` | `long_term`).
+
+### Persona templates (agents)
+
+- `GET /agents` — library. `GET /agents/new` → `POST /agents` — create.
+  `GET /agents/{id}/edit` → `POST /agents/{id}` — edit (path and form id
+  must match).
+- `POST /api/agents`, `PUT /api/agents/{id}`, `DELETE /api/agents/{id}` —
+  REST equivalents.
+
+### Session templates
+
+- `GET /api/session-templates`
+- `GET/POST /api/session-templates[/{id}]`
+- `DELETE /api/session-templates/{id}`
+
+### Remote agent protocol (outbound)
+
+Not served by the hub — the contract a remote participant's service must
+implement; the engine calls it, not the other way around:
+
+```
+POST {url}/speak         -> {"content": "..."}
+POST {url}/observe       -> {}
+POST {url}/session_end   -> {}
+```
 
 ## Configuration
 

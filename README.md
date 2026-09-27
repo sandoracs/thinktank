@@ -77,8 +77,7 @@ be registered there too — see
 session, create and delete them, edit settings (which writes `.env`), register
 provider API keys, and restart the hub. The per-human tokens handed out at
 session creation only decide *which seat* someone speaks from over the
-WebSocket — they are not access control, and `THINKTANK_ADMIN_TOKEN` is
-accepted on the settings page but not currently enforced anywhere.
+WebSocket — they are not access control.
 
 So: the default `THINKTANK_HOST=127.0.0.1` keeps it on loopback, and that is
 the safe default. The Docker image binds `0.0.0.0` so `-p` works — publish that

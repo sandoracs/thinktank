@@ -34,10 +34,6 @@ class Settings(BaseSettings):
     # --- network / hub ---
     host: str = Field(default="127.0.0.1", description="Bind host; v1 stays loopback only.")
     port: int = Field(default=8080, ge=1, le=65535)
-    admin_token: str | None = Field(
-        default=None,
-        description="Optional shared token guarding config endpoints when exposed on a LAN.",
-    )
 
     # --- llm defaults ---
     default_model: str = Field(

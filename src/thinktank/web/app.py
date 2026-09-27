@@ -451,8 +451,6 @@ SETTINGS_SECTIONS: list[dict[str, Any]] = [
             {"name": "host", "label": "Host", "type": "text", "live": False,
              "hint": "in v1, only 127.0.0.1 is recommended"},
             {"name": "port", "label": "Port", "type": "number", "live": False},
-            {"name": "admin_token", "label": "Admin token", "type": "text", "live": False,
-             "hint": "optional; protects the config endpoints when the hub is exposed on a LAN"},
         ],
     },
     {

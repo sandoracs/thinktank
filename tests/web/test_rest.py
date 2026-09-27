@@ -74,7 +74,6 @@ def test_agent_color_and_persona_age(client: TestClient) -> None:
         "consistency_check": "on",
         "consistency_threshold": "3",
         "working_window": "12",
-        "summarize_every": "8",
         "retrieval_k": "5",
         "long_term": "on",
         "initial_mood": "neutral",
@@ -104,7 +103,7 @@ def _new_agent_body(agent_id: str = "cautious_statistician") -> dict[str, Any]:
         "drift": {"mode": "bounded"},
         "consistency_check": True,
         "consistency_threshold": 4,
-        "memory": {"working_window": 6, "summarize_every": 4, "retrieval_k": 3, "long_term": False},
+        "memory": {"working_window": 6, "retrieval_k": 3, "long_term": False},
         "initial_state": {"mood": "skeptical"},
     }
 
@@ -117,7 +116,6 @@ def test_agent_crud_api(client: TestClient) -> None:
     assert created.json()["drift_mode"] == "bounded"
     assert created.json()["memory"] == {
         "working_window": 6,
-        "summarize_every": 4,
         "retrieval_k": 3,
         "long_term": False,
     }
@@ -172,7 +170,6 @@ def test_agent_form_creates_template(client: TestClient) -> None:
         "consistency_check": "on",
         "consistency_threshold": "3",
         "working_window": "20",
-        "summarize_every": "5",
         "retrieval_k": "9",
         "long_term": "off",
         "initial_mood": "bold",
@@ -186,7 +183,6 @@ def test_agent_form_creates_template(client: TestClient) -> None:
     assert listing["form_agent"]["persona"]["expertise"] == ["a", "b"]
     assert listing["form_agent"]["memory"] == {
         "working_window": 20,
-        "summarize_every": 5,
         "retrieval_k": 9,
         "long_term": False,
     }
@@ -244,7 +240,6 @@ def test_agent_edit_form_updates(client: TestClient) -> None:
         "consistency_check": "off",
         "consistency_threshold": "5",
         "working_window": "30",
-        "summarize_every": "2",
         "retrieval_k": "4",
         "long_term": "on",
         "initial_mood": "bold",
@@ -259,7 +254,6 @@ def test_agent_edit_form_updates(client: TestClient) -> None:
     assert updated["drift_mode"] == "free"
     assert updated["memory"] == {
         "working_window": 30,
-        "summarize_every": 2,
         "retrieval_k": 4,
         "long_term": True,
     }

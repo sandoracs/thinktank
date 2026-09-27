@@ -89,9 +89,6 @@
       <label>Working window (messages)
         <input name="working_window" type="number" min="1" value="{{ agent.memory.working_window if editing else '12' }}" class="narrow">
       </label>
-      <label>Summarization frequency
-        <input name="summarize_every" type="number" min="1" value="{{ agent.memory.summarize_every if editing else '8' }}" class="narrow">
-      </label>
       <label>Relevance k (search)
         <input name="retrieval_k" type="number" min="1" value="{{ agent.memory.retrieval_k if editing else '5' }}" class="narrow">
       </label>

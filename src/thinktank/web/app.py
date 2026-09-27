@@ -369,7 +369,6 @@ def _agent_from_form(form: FormData) -> AgentConfig:
         "consistency_threshold": threshold,
         "memory": {
             "working_window": _int("working_window", 12),
-            "summarize_every": _int("summarize_every", 8),
             "retrieval_k": _int("retrieval_k", 5),
             "long_term": (form.get("long_term") or "on") == "on",
         },

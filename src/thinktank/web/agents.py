@@ -153,7 +153,6 @@ def template_summary(config: AgentConfig) -> dict[str, object]:
         "consistency_threshold": config.consistency_threshold,
         "memory": {
             "working_window": config.memory.working_window,
-            "summarize_every": config.memory.summarize_every,
             "retrieval_k": config.memory.retrieval_k,
             "long_term": config.memory.long_term,
         },

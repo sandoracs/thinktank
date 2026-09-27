@@ -134,10 +134,8 @@ then redirects to the library. Endpoints: see [API](#api).
   lines in the live table (the text color is chosen to stay readable on it)
   and appears as a dot in the sidebar and on the library cards.
 - **Memory + initial state:** the agent form (`/agents/new`) exposes the
-  memory settings (`working_window`, `summarize_every`, `retrieval_k`,
-  `long_term`) and the initial persona state (mood); both round-trip through
-  the agent summary. Note that `summarize_every` is stored but not yet read
-  by the engine — episodic summarisation currently runs once at session end.
+  memory settings (`working_window`, `retrieval_k`, `long_term`) and the
+  initial persona state (mood); both round-trip through the agent summary.
 
 ### Session templates (save-as / prefill)
 

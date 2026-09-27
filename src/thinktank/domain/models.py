@@ -105,7 +105,6 @@ class Layer(StrEnum):
 
 class MemoryConfig(BaseModel):
     working_window: int = Field(default=12, ge=1)
-    summarize_every: int = Field(default=8, ge=1)
     retrieval_k: int = Field(default=5, ge=1)
     long_term: bool = True
 

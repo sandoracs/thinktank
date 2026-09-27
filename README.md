@@ -8,7 +8,7 @@ machine, SQLite. Full specification in [`DESIGN.md`](DESIGN.md) (Hungarian).
 ## Status
 
 Milestones **M0–M6** plus the **RemoteAgent** (M7) and the **M3 `reembed`**
-command are implemented and tested (76 tests, ruff + pyright strict clean).
+command are implemented and tested (107 tests, ruff + pyright strict clean).
 Token streaming and tool-using agents (remaining M7 scope) are not started.
 
 | Milestone | Scope | Status |
@@ -24,18 +24,46 @@ Token streaming and tool-using agents (remaining M7 scope) are not started.
 
 ## Install
 
-Requires [uv](https://docs.astral.sh/uv/).
+Pick one:
+
+### 1. Source checkout (development) — requires [uv](https://docs.astral.sh/uv/)
 
 ```sh
+git clone <this repo> thinktank && cd thinktank
 uv sync            # installs Python 3.12 + all deps into .venv
+# or simply:
+./start.sh         # web hub on http://127.0.0.1:8080 (creates .env if missing)
+```
+
+### 2. Docker (no Python/uv needed on the host)
+
+```sh
+docker build -t thinktank .
+docker run -d --name thinktank \
+  -p 8080:8080 \
+  -v thinktank-data:/app/data \
+  -v "$PWD/.env":/app/.env:ro \
+  thinktank
+# → http://127.0.0.1:8080   (data volume keeps the DB; .env supplies your keys)
+```
+
+Non-root, healthcheck included; the DB lives in the mounted `/app/data`
+volume, and the image itself contains no secrets (`.env`/`data/` are
+`.dockerignore`d).
+
+### 3. Installable command from git (`uv tool`, no PyPI account needed)
+
+```sh
+uv tool install --from git+<this repo url> thinktank
+thinktank serve        # on PATH, isolated venv, no project checkout
 ```
 
 ## Verify
 
 ```sh
-uv run pytest -q                 # 76 tests
+uv run pytest -q                 # 107 tests
 uv run ruff check src tests      # lint
-uv run --with pyright pyright    # strict type-check (0 errors)
+uv run pyright                  # strict type-check (0 errors)
 ```
 
 ## Run headless (research)
@@ -203,6 +231,15 @@ template or the default model). Keys are stored in
 registered `<id>` fall through to the usual env-based resolution
 (`OPENAI_API_KEY`, `OLLAMA_API_BASE`, …).
 
+The **"Default model"** setting is a select populated from these registered
+providers (`<id>/<model>`); the current value is kept as a "(current)"
+option even if it is not in the list, so saving never silently changes it.
+
+### Per-agent output length
+
+Each agent config can cap its output with `max_tokens` (YAML / API).
+Omitted or `null` (the default) means **no cap** — the model writes to
+natural length, so speeches are never truncated.
 
 ## Layout
 

@@ -1,6 +1,7 @@
 # ThinkTank
 
 [![GitHub repo](https://img.shields.io/badge/GitHub-sandoracs%2Fthinktank-181717?logo=github)](https://github.com/sandoracs/thinktank)
+[![License: MIT or Commercial](https://img.shields.io/badge/license-MIT%20or%20Commercial-blue)](#licensing)
 
 Multi-party debate system where AI agents and humans talk around a virtual table
 on a topic. Everyone hears everyone; agents have three-layer memory and a

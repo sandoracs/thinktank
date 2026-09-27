@@ -192,10 +192,15 @@ class ContextBuilder:
         return "\n\n".join(parts)
 
     def _fit_working(self, working: list[ChatMessage], remainder: int) -> list[ChatMessage]:
-        if remainder <= 0 or not working:
+        if not working:
             return working
+        # A positive remainder always keeps at least the most recent message for
+        # continuity; a remainder that is already <= 0 (system+memories+summary
+        # alone blew the budget) has no such allowance left to protect.
+        budget = max(remainder, 0)
+        min_keep = 1 if remainder > 0 else 0
         cost = sum(self.count(m.content) for m in working)
-        while cost > remainder and len(working) > 1:
+        while cost > budget and len(working) > min_keep:
             dropped = working.pop(0)  # oldest first
             cost -= self.count(dropped.content)
         return working

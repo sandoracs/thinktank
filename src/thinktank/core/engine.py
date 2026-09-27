@@ -170,7 +170,14 @@ class SessionEngine:
             await self._turn(speaker_id, ctx)
 
     async def _turn(self, speaker_id: str, ctx: TurnContext) -> None:
-        participant = self._participants[speaker_id]
+        participant = self._participants.get(speaker_id)
+        if participant is None:
+            # Stale speaker id (e.g. a raised hand for a participant no longer
+            # in the session): skip rather than crash the run loop, and clear
+            # the hand so it does not wedge every subsequent round forever.
+            await self.emit(EventType.TURN_SKIPPED, speaker_id=speaker_id, reason="unknown_participant")
+            await self._maybe_lower_hand(speaker_id)
+            return
         try:
             message = await participant.speak(ctx)
         except Exception as exc:
@@ -178,13 +185,19 @@ class SessionEngine:
             await self.emit(EventType.ERROR, component="speak", message=str(exc))
             await self.emit(EventType.TURN_SKIPPED, speaker_id=speaker_id, reason="error")
             await self._register_error(speaker_id)
+            await self._maybe_lower_hand(speaker_id)
             return
         if message is None:
             reason = "human_timeout" if participant.kind == "human" else "passed"
             await self.emit(EventType.TURN_SKIPPED, speaker_id=speaker_id, reason=reason)
+            await self._maybe_lower_hand(speaker_id)
             return
         self._consecutive_errors[speaker_id] = 0
         await self._post(message)
+
+    async def _maybe_lower_hand(self, participant_id: str) -> None:
+        if participant_id in self._state.hands_raised:
+            await self.emit(EventType.HAND_LOWERED, participant_id=participant_id)
 
     async def _post(self, message: Message) -> None:
         await self.emit(EventType.MESSAGE_POSTED, message=message)
@@ -195,8 +208,7 @@ class SessionEngine:
         for result in results:
             if isinstance(result, Exception):
                 logger.warning("observe failed: %s", result)
-        if message.speaker_id in self._state.hands_raised:
-            await self.emit(EventType.HAND_LOWERED, participant_id=message.speaker_id)
+        await self._maybe_lower_hand(message.speaker_id)
 
     async def _end_round(self) -> None:
         round_no = self._state.current_round
@@ -263,7 +275,12 @@ class SessionEngine:
             )
             await self._commit_persona(pid, decision.new_state, etype, cause_seq, decision.notes)
         elif decision.action == "needs_approval":
-            # Approval workflow lands in M6; record the request, no state change.
+            # One outstanding request per agent: a later reflection while the
+            # first is still pending must not silently pile up a second row
+            # that decide_approval would never look at.
+            existing = await self._store.list_approvals(self._session_id, agent_id=pid)
+            if any(a["status"] == "pending" for a in existing):
+                return
             await self.emit(
                 EventType.APPROVAL_REQUESTED,
                 agent_id=pid,
@@ -336,7 +353,7 @@ class SessionEngine:
                 notes=["rejected by approver"],
             )
         await self._store.decide_approval_row(
-            self._session_id, agent_id, "approved" if decision == "approve" else "rejected"
+            int(pending["id"]), "approved" if decision == "approve" else "rejected"  # pyright: ignore[reportArgumentType]
         )
         await self.emit(EventType.APPROVAL_DECIDED, agent_id=agent_id, decision=decision)
         return True

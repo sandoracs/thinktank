@@ -102,8 +102,9 @@ def apply_event(state: SessionState, event: Event) -> SessionState:
         state.current_speaker = payload.speaker_id
     elif t is EventType.MESSAGE_POSTED:
         payload = event.payload_as(MessagePostedPayload)
-        state.messages.append(payload.message)
-        if payload.message.kind in ("speech", "moderator"):
+        message = payload.message.model_copy(update={"seq": event.seq})
+        state.messages.append(message)
+        if message.kind in ("speech", "moderator"):
             state.message_count += 1
     elif t is EventType.HAND_RAISED:
         payload = event.payload_as(ParticipantRefPayload)

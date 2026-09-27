@@ -287,18 +287,19 @@ class EventStore:
             for r in rows
         ]
 
-    async def decide_approval_row(
-        self, session_id: uuid.UUID, agent_id: str, status: str
-    ) -> bool:
-        """Mark the pending approval for ``agent_id`` as ``approved``/``rejected``."""
+    async def decide_approval_row(self, row_id: int, status: str) -> bool:
+        """Mark exactly the pending approval identified by ``row_id`` as decided.
+
+        Scoped to a single row (not just ``pending``) so deciding one proposal
+        never touches another pending approval for the same agent.
+        """
         from thinktank.storage.tables import PendingApproval as PendingApprovalRow
 
         async with self._factory() as db, db.begin():
             result = await db.execute(
                 sa.update(PendingApprovalRow)
                 .where(
-                    PendingApprovalRow.session_id == str(session_id),
-                    PendingApprovalRow.agent_id == agent_id,
+                    PendingApprovalRow.id == row_id,
                     PendingApprovalRow.status == "pending",
                 )
                 .values(status=status, decided_at=datetime.now(UTC))

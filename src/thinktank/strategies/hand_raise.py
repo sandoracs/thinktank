@@ -41,7 +41,8 @@ class HandRaisePriority(TurnStrategy):
             self._inner = build_strategy(inner_ref, llm=llm)
 
     async def next_speaker(self, state: SessionState) -> str | None:
-        raised = list(state.hands_raised)
+        disabled = set(state.disabled)
+        raised = [pid for pid in state.hands_raised if pid not in disabled]
         if raised:
             return raised[0]
         return await self._inner.next_speaker(state)

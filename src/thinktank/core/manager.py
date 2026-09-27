@@ -80,6 +80,28 @@ class SessionManager:
         created = await self._bus.emit(session_id, make_event(EventType.SESSION_CREATED, config=config))
         return await self._build_engine(session_id, config, agents, remotes, initial_event=created)
 
+    async def load_created_session(
+        self,
+        session_id: uuid.UUID,
+        config: SessionConfig,
+        agents: dict[str, AgentConfig],
+        remotes: dict[str, RemoteConfig] | None = None,
+    ) -> SessionEngine:
+        """Rebuild an engine for a stored session that has never been started.
+
+        Used to restore in-memory hub state after a process restart: unlike
+        :meth:`reset_session`, this replays the session's existing
+        ``SessionCreated`` event instead of wiping and re-emitting one, so a
+        session that was merely ``created`` (no messages yet) becomes
+        startable again without touching its stored event history.
+        """
+        events = await self._store.get_events(session_id)
+        created = next((e for e in events if e.type is EventType.SESSION_CREATED), None)
+        if created is None:
+            msg = f"Session {session_id} has no SessionCreated event to replay"
+            raise ValueError(msg)
+        return await self._build_engine(session_id, config, agents, remotes, initial_event=created)
+
     async def reset_session(
         self,
         session_id: uuid.UUID,

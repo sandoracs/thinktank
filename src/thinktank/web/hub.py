@@ -27,7 +27,7 @@ from thinktank.core.state import (
     STATUS_RUNNING,
 )
 from thinktank.domain.events import EventType
-from thinktank.domain.models import AgentConfig, SessionConfig
+from thinktank.domain.models import AgentConfig, RemoteConfig, SessionConfig
 from thinktank.participants.human import HumanParticipant
 
 
@@ -49,9 +49,28 @@ class WebHub:
         self._ws: dict[uuid.UUID, set[WebSocket]] = {}
 
     # -- session lifecycle ---------------------------------------------------
-    async def create_session(self, config: SessionConfig, agents: dict[str, AgentConfig]) -> HubSession:
+    async def create_session(
+        self,
+        config: SessionConfig,
+        agents: dict[str, AgentConfig],
+        remotes: dict[str, RemoteConfig] | None = None,
+    ) -> HubSession:
         """Create the session (status ``created``) without starting the engine."""
-        engine = await self._manager.create_session(config, agents)
+        engine = await self._manager.create_session(config, agents, remotes)
+        return self._register(engine)
+
+    async def load_created(
+        self,
+        session_id: uuid.UUID,
+        config: SessionConfig,
+        agents: dict[str, AgentConfig],
+        remotes: dict[str, RemoteConfig] | None = None,
+    ) -> HubSession:
+        """Re-attach a live engine to a stored ``created`` session (e.g. after a restart)."""
+        engine = await self._manager.load_created_session(session_id, config, agents, remotes)
+        return self._register(engine)
+
+    def _register(self, engine: SessionEngine) -> HubSession:
         humans = {
             pid: p for pid, p in engine.participants.items() if isinstance(p, HumanParticipant)
         }

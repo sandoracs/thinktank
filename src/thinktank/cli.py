@@ -20,7 +20,7 @@ from typing import Any
 from thinktank.config import get_settings
 from thinktank.core.manager import SessionManager
 from thinktank.domain.events import Event, EventType, MessagePostedPayload
-from thinktank.domain.models import AgentConfig, SessionConfig
+from thinktank.domain.models import AgentConfig, RemoteConfig, SessionConfig
 from thinktank.llm.client import LLMClient
 from thinktank.memory.embeddings import build_embedding_provider
 from thinktank.memory.sqlite import SQLiteMemoryBackend
@@ -32,15 +32,18 @@ logger = logging.getLogger("thinktank")
 
 
 
-def _load_session(path: Path) -> tuple[SessionConfig, dict[str, AgentConfig]]:
+def _load_session(path: Path) -> tuple[SessionConfig, dict[str, AgentConfig], dict[str, RemoteConfig]]:
     import yaml
 
     data: dict[str, Any] = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     agents: dict[str, AgentConfig] = {}
     for aid, acfg in (data.get("agents") or {}).items():
         agents[aid] = AgentConfig(id=aid, **(acfg or {}))
-    session_data = {k: v for k, v in data.items() if k != "agents"}
-    return SessionConfig(**session_data), agents
+    remotes: dict[str, RemoteConfig] = {}
+    for rid, rcfg in (data.get("remotes") or {}).items():
+        remotes[rid] = RemoteConfig(id=rid, **(rcfg or {}))
+    session_data = {k: v for k, v in data.items() if k not in ("agents", "remotes")}
+    return SessionConfig(**session_data), agents, remotes
 
 
 def _build_llm(fake: bool) -> LLMClient:
@@ -56,7 +59,7 @@ def _build_llm(fake: bool) -> LLMClient:
 
 async def _run(args: argparse.Namespace) -> int:
     settings = get_settings()
-    config, agents = _load_session(args.session)
+    config, agents, remotes = _load_session(args.session)
 
     engine = make_engine(load_vec=True)
     await init_db(engine)
@@ -77,7 +80,7 @@ async def _run(args: argparse.Namespace) -> int:
     )
     await manager.recover_on_start()
 
-    session = await manager.create_session(config, agents)
+    session = await manager.create_session(config, agents, remotes)
     session_id = session.state.session_id
     assert session_id is not None
 
@@ -93,7 +96,8 @@ async def _run(args: argparse.Namespace) -> int:
             payload = event.payload
             print(f"\n[memory] {payload.get('agent_id')} wrote {payload.get('layer')} (id={payload.get('memory_id')})")
 
-    manager.subscribe(session_id, _print_event)
+    if not args.quiet:
+        manager.subscribe(session_id, _print_event)
 
     await manager.start(session)
 

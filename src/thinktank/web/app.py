@@ -35,13 +35,14 @@ from starlette.datastructures import FormData
 
 from thinktank.config import Settings, get_settings, reload_settings, write_env_settings
 from thinktank.core.manager import SessionManager
-from thinktank.core.state import SessionState, apply_event
+from thinktank.core.state import STATUS_CREATED, SessionState, apply_event
 from thinktank.domain.events import Event, EventType
 from thinktank.domain.models import (
     AgentConfig,
     DriftMode,
     Layer,
     PersonaCore,
+    RemoteConfig,
     SessionConfig,
 )
 from thinktank.llm.client import LLMClient
@@ -141,14 +142,48 @@ def _default_llm(settings: Settings) -> LLMClient:
     return LiteLLMClient(timeout_s=settings.llm_timeout_s)
 
 
-async def _create_session(deps: dict[str, Any], config: SessionConfig) -> HubSession:
+async def _create_session(
+    deps: dict[str, Any],
+    config: SessionConfig,
+    remotes: dict[str, RemoteConfig] | None = None,
+) -> HubSession:
     """Validate, resolve agent templates, and register the session in the hub."""
     agent_ids = config.agent_ids()
     try:
         agents = await agent_repo.resolve_agents(deps["factory"], agent_ids)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    return await deps["hub"].create_session(config, agents)
+    return await deps["hub"].create_session(config, agents, remotes)
+
+
+def _parse_remotes(raw: Any) -> dict[str, RemoteConfig] | None:
+    """Parse an optional top-level ``remotes`` object from a raw request body."""
+    if not raw:
+        return None
+    if not isinstance(raw, dict):
+        raise HTTPException(status_code=400, detail="'remotes' must be an object keyed by participant id")
+    try:
+        return {rid: RemoteConfig.model_validate({"id": rid, **rcfg}) for rid, rcfg in raw.items()}
+    except ValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+async def _rehydrate_created_sessions(store: EventStore, factory: Any, hub: WebHub) -> None:
+    """Re-attach a live engine for every stored session still in ``created`` status.
+
+    The hub's in-memory session registry starts empty on every process
+    restart; without this, a session that was created but never started would
+    be stuck returning 409 from ``/start`` forever (DESIGN.md §15).
+    """
+    for row in await store.list_sessions():
+        if row.status != STATUS_CREATED:
+            continue
+        config = SessionConfig.model_validate(row.config)
+        try:
+            agents = await agent_repo.resolve_agents(factory, config.agent_ids())
+            await hub.load_created(uuid.UUID(row.id), config, agents)
+        except Exception:
+            logger.exception("failed to rehydrate created session %s", row.id)
 
 
 def _multi(form: FormData, key: str) -> list[str]:
@@ -231,7 +266,9 @@ def _config_from_form(form: FormData) -> SessionConfig:
 
     moderator = str(form.get("moderator") or "").strip() or None
     if moderator:
-        participants = [{"agent": moderator}] + [p for p in participants if p != {"agent": moderator}]
+        existing_ids = {p.get("agent") or p.get("human") or p.get("remote") for p in participants}
+        if moderator not in existing_ids:
+            participants = [{"agent": moderator}, *participants]
 
     strategy_name = str(form.get("strategy") or "round_robin")
     strategy_params: dict[str, Any] = {}
@@ -579,6 +616,7 @@ def create_app(
         await manager.recover_on_start()
         await agent_repo.seed_defaults(factory)
         await agent_repo.ensure_colors(factory)
+        await _rehydrate_created_sessions(store, factory, hub)
         yield
         await hub.shutdown()
         await dispose(engine)
@@ -1009,7 +1047,8 @@ def create_app(
     @app.post("/api/sessions", status_code=201)
     async def api_create_session(body: SessionConfig, request: Request) -> dict[str, Any]:
         deps = _deps(request)
-        entry = await _create_session(deps, body)
+        remotes = _parse_remotes((await request.json()).get("remotes"))
+        entry = await _create_session(deps, body, remotes)
         return {
             "id": str(entry.session_id),
             "url": f"/sessions/{entry.session_id}",
@@ -1499,7 +1538,8 @@ async def _handle_client_message(hub: WebHub, sid: uuid.UUID, human_id: str | No
             human.submit(str(msg.get("content", "")))
     elif mtype == "raise_hand":
         engine = hub.engine(sid)
-        if engine is not None:
+        human = hub.human(sid, human_id)
+        if engine is not None and human is not None:
             await engine.raise_hand(human_id)
     elif mtype == "lower_hand":
         engine = hub.engine(sid)

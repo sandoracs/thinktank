@@ -14,6 +14,7 @@ stored through the injected :class:`MemoryBackend` and logged as
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Literal
 
@@ -39,6 +40,8 @@ from thinktank.participants.base import TurnContext
 from thinktank.persona.consistency import ConsistencyJudgment, consistency_messages
 from thinktank.persona.prompts import reflection_messages
 from thinktank.persona.reflection import ReflectionResult
+
+logger = logging.getLogger(__name__)
 
 
 class AIAgent:
@@ -303,6 +306,7 @@ class AIAgent:
                 response_model=response_model,
             )
         except Exception:
+            logger.exception("%s LLM call failed for %s", purpose, self.id)
             return None
         await self._emit(
             EventType.LLM_CALL_COMPLETED,

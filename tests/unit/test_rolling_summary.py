@@ -99,3 +99,13 @@ async def test_rolling_summary_can_be_disabled() -> None:
     agent = _agent(state, config, llm, rolling=False)
     await agent.speak(TurnContext(session_id=sid, round=1))
     assert not [c for c in llm.calls if c["purpose"] == "summary"]
+
+
+def test_session_end_transcript_uses_display_names() -> None:
+    sid = uuid.uuid4()
+    config = SessionConfig(title="t", topic="topic", participants=[])
+    state = _state(sid, config, 2)
+    agent = _agent(state, config, FakeLLM(responder=_responder))
+    transcript = agent._transcript()  # pyright: ignore[reportPrivateUsage]
+    assert "Optimist: point number 1" in transcript
+    assert "other:" not in transcript

@@ -379,11 +379,7 @@ class AIAgent:
         return result
 
     def _transcript(self) -> str:
-        lines: list[str] = []
-        for msg in self._state.messages:
-            name = msg.speaker_id
-            lines.append(f"{name}: {msg.content}")
-        return "\n".join(lines)
+        return self._render(self._state.messages)
 
     async def _retrieve_memories(self, ctx: TurnContext) -> list[MemoryHit]:
         if self._memory is None:

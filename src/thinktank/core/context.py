@@ -129,6 +129,10 @@ class ContextBuilder:
 
         remainder = self.budget.total - self.count(system)
         working = self._fit_working(working, remainder)
+        if working and working[0].role == "assistant":
+            # Some providers (Anthropic) require the first non-system message to
+            # be from the user; the window can start with the agent's own line.
+            working.insert(0, ChatMessage(role="user", content="(Earlier in the discussion:)"))
 
         messages: list[ChatMessage] = [ChatMessage(role="system", content=system)]
         messages.extend(working)

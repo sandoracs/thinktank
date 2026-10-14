@@ -83,3 +83,19 @@ def test_budget_from_settings() -> None:
     s = Settings(_env_file=None, context_total_tokens=9000, context_system_tokens=2500)  # pyright: ignore[reportCallIssue]
     b = ContextBudget.from_settings(s)
     assert (b.total, b.system) == (9000, 2500)
+
+
+def test_working_memory_never_starts_with_assistant() -> None:
+    sid = _session_id()
+    config = SessionConfig(title="t", topic="x", participants=[])
+    agent = AgentConfig(id="me", model="", persona=PersonaCore(name="S", role="s"))
+    state = SessionState(
+        session_id=sid,
+        config=config,
+        messages=[
+            Message(id=uuid.uuid4(), session_id=sid, seq=1, speaker_id="me", kind="speech", content="mine"),
+            Message(id=uuid.uuid4(), session_id=sid, seq=2, speaker_id="o", kind="speech", content="theirs"),
+        ],
+    )
+    messages = ContextBuilder().build(config=config, agent=agent, state=state, participants=[])
+    assert messages[1].role == "user"

@@ -35,6 +35,7 @@ BASE_FORM = {
     "embedding_dim": "384",
     "host": "127.0.0.1",
     "port": "9099",
+    "allowed_hosts": "localhost,127.0.0.1,::1",
     "database_url": "sqlite+aiosqlite:///./thinktank.db",
     "data_dir": "data",
     "log_level": "DEBUG",

@@ -546,7 +546,7 @@ def test_approval_flow_over_api(tmp_path: Path) -> None:
         database_url=f"sqlite+aiosqlite:///{db}",
         human_timeout_s=30,
     )
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         # Register an APPROVED-mode agent in the library.
         agent_cfg = {
             "id": "approved_agent",
@@ -703,7 +703,7 @@ def test_agent_inspector_timeline(tmp_path: Path) -> None:
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'inspector.db'}",
         human_timeout_s=30,
     )
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         body = {
             "title": "inspector",
             "topic": "AI co-authorship",

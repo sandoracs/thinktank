@@ -71,6 +71,7 @@ from thinktank.web import agents as agent_repo
 from thinktank.web import session_templates as session_tpl
 from thinktank.web.hub import HubSession, WebHub
 from thinktank.web.render import sidebar_fragment, transcript_fragment
+from thinktank.web.security import SameOriginGuard, parse_allowed_hosts
 
 _WEB = Path(__file__).parent
 _TEMPLATES = _WEB / "templates"
@@ -463,6 +464,8 @@ SETTINGS_SECTIONS: list[dict[str, Any]] = [
             {"name": "host", "label": "Host", "type": "text", "live": False,
              "hint": "in v1, only 127.0.0.1 is recommended"},
             {"name": "port", "label": "Port", "type": "number", "live": False},
+            {"name": "allowed_hosts", "label": "Allowed Host names", "type": "text", "live": False,
+             "hint": "comma-separated; add your LAN name/IP if you expose the hub; * disables the check"},
         ],
     },
     {
@@ -632,6 +635,9 @@ def create_app(
         await dispose(engine)
 
     app = FastAPI(title="ThinkTank", version="0.1.0", lifespan=lifespan)
+    # No auth: refuse other websites (CSRF / cross-site WebSocket) and foreign
+    # Host headers (DNS rebinding). See thinktank.web.security.
+    app.add_middleware(SameOriginGuard, allowed_hosts=parse_allowed_hosts(resolved_settings.allowed_hosts))
     app.mount("/static", StaticFiles(directory=str(_WEB / "static")), name="static")
 
     @app.middleware("http")

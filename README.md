@@ -81,7 +81,11 @@ session creation only decide *which seat* someone speaks from over the
 WebSocket — they are not access control.
 
 So: the default `THINKTANK_HOST=127.0.0.1` keeps it on loopback, and that is
-the safe default. The Docker image binds `0.0.0.0` so `-p` works — publish that
+the safe default. Loopback alone does not stop *other websites in your own
+browser* from talking to the hub, so it also refuses cross-site requests
+(form POSTs, WebSocket handshakes whose `Origin` is another site) and any
+`Host` header outside `THINKTANK_ALLOWED_HOSTS` (DNS rebinding). If you reach
+the hub by a LAN name or IP, add that name to `THINKTANK_ALLOWED_HOSTS`. The Docker image binds `0.0.0.0` so `-p` works — publish that
 port only to localhost (`-p 127.0.0.1:8080:8080`), a private network you trust,
 or an authenticating reverse proxy in front.
 

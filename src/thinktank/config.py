@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     # --- network / hub ---
     host: str = Field(default="127.0.0.1", description="Bind host; v1 stays loopback only.")
     port: int = Field(default=8080, ge=1, le=65535)
+    allowed_hosts: str = Field(
+        default="localhost,127.0.0.1,::1",
+        description=(
+            "Comma-separated Host names the hub answers to (DNS-rebinding guard). "
+            "Add your LAN name/IP if you expose the hub; '*' disables the check."
+        ),
+    )
 
     # --- llm defaults ---
     default_model: str = Field(

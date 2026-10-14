@@ -74,3 +74,22 @@ async def test_full_run_produces_messages_and_events(tmp_path: Path) -> None:
     assert EventType.TURN_SKIPPED in types  # the human seat times out
     assert sum(1 for e in events if e.type is EventType.MESSAGE_POSTED) >= 3  # open + agent + close
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_stop_mid_round_still_closes_the_round(tmp_path: Path) -> None:
+    from thinktank.domain.models import StopConditions
+
+    engine, store, mgr, config, agents = _build(tmp_path)
+    # Stop after the moderator's opening + one speech: the cap lands mid-round.
+    config = config.model_copy(update={"stop": StopConditions(max_rounds=3, max_messages=2, max_cost_usd=None)})
+    await init_db(engine)
+    sess = await mgr.create_session(config, agents)
+    await mgr.start(sess)
+
+    events = await store.get_events(sess.session_id)
+    started = [e for e in events if e.type is EventType.ROUND_STARTED]
+    ended = [e for e in events if e.type is EventType.ROUND_ENDED]
+    assert len(started) == len(ended)
+    assert ended[-1].payload.get("partial") is True
+    await engine.dispose()

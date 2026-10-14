@@ -151,6 +151,12 @@ class SessionEngine:
                 await self._play_round()
                 if self._state.round_complete:
                     await self._end_round()
+                else:
+                    # Stopped mid-round (manual stop, cost/time/message limit):
+                    # still close it, so every RoundStarted has a RoundEnded.
+                    # No reflection on a partial round.
+                    await self.emit(EventType.ROUND_ENDED, round=self._state.current_round, partial=True)
+                    break
                 round_no += 1
         finally:
             await self._moderator_close()
@@ -332,17 +338,19 @@ class SessionEngine:
             return False
         proposal = ReflectionResult.model_validate(pending["proposal"])
         current = self._current_persona(agent_id)
+        cause_seq = await self._approval_cause_seq(agent_id)
         if decision == "approve":
             new_state = apply_updates(current, proposal)
             version = await self._store.next_persona_version(agent_id, self._session_id)
             await self._store.append_persona_version(
-                agent_id, self._session_id, version, new_state.model_dump(), None
+                agent_id, self._session_id, version, new_state.model_dump(), cause_seq
             )
             await self.emit(
                 EventType.PERSONA_UPDATED,
                 agent_id=agent_id,
                 version=version,
                 state=new_state,
+                cause_seq=cause_seq,
                 notes=["approved"],
             )
         else:
@@ -350,6 +358,7 @@ class SessionEngine:
                 EventType.PERSONA_UPDATE_REJECTED,
                 agent_id=agent_id,
                 reason="not_approved",
+                cause_seq=cause_seq,
                 notes=["rejected by approver"],
             )
         await self._store.decide_approval_row(
@@ -357,6 +366,19 @@ class SessionEngine:
         )
         await self.emit(EventType.APPROVAL_DECIDED, agent_id=agent_id, decision=decision)
         return True
+
+    async def _approval_cause_seq(self, agent_id: str) -> int | None:
+        """The reflection seq behind the agent's latest approval request.
+
+        Keeps the ReflectionProposed -> PersonaUpdated chain intact for analysis
+        without adding a column to the approvals table.
+        """
+        events = await self._store.get_events(self._session_id)
+        for event in reversed(events):
+            if event.type is EventType.APPROVAL_REQUESTED and event.payload.get("agent_id") == agent_id:
+                seq = event.payload.get("cause_seq")
+                return int(seq) if seq is not None else None
+        return None
 
     async def _start_round(self, round_no: int) -> None:
         await self.emit(EventType.ROUND_STARTED, round=round_no)

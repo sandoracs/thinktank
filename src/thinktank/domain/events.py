@@ -67,6 +67,7 @@ class SessionEndedPayload(_Payload):
 
 class RoundPayload(_Payload):
     round: int
+    partial: bool = False  # RoundEnded only: the session stopped before the round finished
 
 
 class TurnAssignedPayload(_Payload):

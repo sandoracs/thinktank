@@ -38,6 +38,10 @@ BASE_FORM = {
     "database_url": "sqlite+aiosqlite:///./thinktank.db",
     "data_dir": "data",
     "log_level": "DEBUG",
+    "context_total_tokens": "16000",
+    "context_system_tokens": "3000",
+    "context_memory_tokens": "1500",
+    "context_summary_tokens": "1500",
 }
 
 

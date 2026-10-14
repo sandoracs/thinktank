@@ -59,6 +59,17 @@ class Settings(BaseSettings):
         default=False,
         description="If true, use the offline FakeLLM instead of LiteLLM (``THINKTANK_FAKE_LLM=1``).",
     )
+    # --- agent context budget (estimated tokens) ---
+    context_total_tokens: int = Field(
+        default=16000, ge=1000, description="Per-turn context budget for one agent (all sections)."
+    )
+    context_system_tokens: int = Field(
+        default=3000,
+        ge=200,
+        description="Soft cap for persona + rules + participants + questions; exceeding it only logs a warning.",
+    )
+    context_memory_tokens: int = Field(default=1500, ge=0, description="Budget for retrieved memories.")
+    context_summary_tokens: int = Field(default=1500, ge=0, description="Budget for the rolling in-session summary.")
     # --- logging ---
     log_level: str = Field(default="INFO", description="structlog level name (DEBUG, INFO, ...).")
     log_json: bool = Field(default=True, description="Emit JSON logs instead of pretty console logs.")

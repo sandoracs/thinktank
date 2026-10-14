@@ -17,6 +17,7 @@ are never trimmed.
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,12 +29,19 @@ from thinktank.core.state import SessionState
 from thinktank.domain.models import AgentConfig, MemoryHit, Message, PersonaState, SessionConfig
 from thinktank.llm.client import ChatMessage
 
+logger = logging.getLogger(__name__)
+
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "llm" / "prompts"
 
 
 def estimate_tokens(text: str) -> int:
-    """Cheap offline token estimate (~4 chars/token); no downloads needed."""
-    return max(1, len(text) // 4)
+    """Cheap offline token estimate; no downloads needed.
+
+    ~4 chars/token holds for English, but Hungarian and other morphologically
+    rich languages tokenise denser, so 3 chars/token is used to stay on the
+    safe side of the real budget.
+    """
+    return max(1, len(text) // 3)
 
 
 TokenCounter = Callable[[str], int]
@@ -50,10 +58,21 @@ class ParticipantInfo:
 
 @dataclass
 class ContextBudget:
-    total: int = 6000
-    system: int = 1500
-    memories: int = 1000
-    summary: int = 600
+    total: int = 16000
+    system: int = 3000
+    memories: int = 1500
+    summary: int = 1500
+
+    @classmethod
+    def from_settings(cls, settings: object) -> ContextBudget:
+        """Build from a ``Settings`` object (missing fields keep the defaults)."""
+        default = cls()
+        return cls(
+            total=int(getattr(settings, "context_total_tokens", default.total)),
+            system=int(getattr(settings, "context_system_tokens", default.system)),
+            memories=int(getattr(settings, "context_memory_tokens", default.memories)),
+            summary=int(getattr(settings, "context_summary_tokens", default.summary)),
+        )
 
 
 class ContextBuilder:
@@ -102,7 +121,7 @@ class ContextBuilder:
         working = self._working_memory(state, agent, participants, working_messages)
 
         # Budget: ensure base fits, then size the trimmable sections.
-        self._assert_fits(base_system, base_cost)
+        self._check_system_budget(agent.id, base_cost)
         memories_text = self._trim_to_budget(memories_text, self.budget.memories)
         summary_text = self._trim_to_budget(summary_text, self.budget.summary)
 
@@ -117,15 +136,20 @@ class ContextBuilder:
         return messages
 
     # -- internals ---------------------------------------------------------
-    def _assert_fits(self, text: str, cost: int) -> None:
+    def _check_system_budget(self, agent_id: str, cost: int) -> None:
+        # The core/state is never trimmed. Going over the soft cap used to raise,
+        # which the engine counted as a failed turn and, three turns later,
+        # disabled the agent for the rest of the session. Warn instead: the
+        # working memory shrinks to make room (see _fit_working).
         if cost > self.budget.system:
-            # The core/state is non-trimmable, so a budget this small is a config
-            # error; surface it rather than silently truncating identity.
-            msg = (
-                f"System context ({cost} tokens) exceeds the non-trimmable "
-                f"system budget ({self.budget.system}). Reduce the persona or raise the budget."
+            logger.warning(
+                "System context for %s is ~%d tokens, over the %d soft cap; "
+                "working memory will be trimmed to fit. Shorten the persona or raise "
+                "THINKTANK_CONTEXT_SYSTEM_TOKENS.",
+                agent_id,
+                cost,
+                self.budget.system,
             )
-            raise ValueError(msg)
 
     def _base_system(
         self,

@@ -59,3 +59,27 @@ def test_no_language_line_when_unset() -> None:
     state = SessionState(session_id=_session_id(), config=config)
     messages = ContextBuilder().build(config=config, agent=agent, state=state, participants=[])
     assert "Always speak in" not in messages[0].content
+
+
+def test_oversized_system_prompt_warns_instead_of_raising(caplog: object) -> None:
+    import logging
+
+    from thinktank.core.context import ContextBudget
+
+    config = SessionConfig(title="t", topic="x " * 400, participants=[])
+    agent = AgentConfig(id="me", model="", persona=PersonaCore(name="S", role="s"))
+    state = SessionState(session_id=_session_id(), config=config)
+    builder = ContextBuilder(ContextBudget(total=1000, system=200))
+    with caplog.at_level(logging.WARNING, logger="thinktank.core.context"):  # type: ignore[attr-defined]
+        messages = builder.build(config=config, agent=agent, state=state, participants=[])
+    assert messages[0].role == "system"
+    assert "soft cap" in caplog.text  # type: ignore[attr-defined]
+
+
+def test_budget_from_settings() -> None:
+    from thinktank.config import Settings
+    from thinktank.core.context import ContextBudget
+
+    s = Settings(_env_file=None, context_total_tokens=9000, context_system_tokens=2500)  # pyright: ignore[reportCallIssue]
+    b = ContextBudget.from_settings(s)
+    assert (b.total, b.system) == (9000, 2500)

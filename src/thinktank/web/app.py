@@ -34,6 +34,7 @@ from starlette.background import BackgroundTask
 from starlette.datastructures import FormData
 
 from thinktank.config import Settings, get_settings, reload_settings, write_env_settings
+from thinktank.core.context import ContextBudget, ContextBuilder
 from thinktank.core.manager import SessionManager
 from thinktank.core.state import STATUS_CREATED, SessionState, apply_event
 from thinktank.domain.events import Event, EventType
@@ -435,6 +436,17 @@ SETTINGS_SECTIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "title": "Agent context budget",
+        "fields": [
+            {"name": "context_total_tokens", "label": "Total per turn (tokens)", "type": "number", "live": False,
+             "hint": "estimated tokens; older working-memory messages are trimmed first"},
+            {"name": "context_system_tokens", "label": "Persona + rules soft cap", "type": "number", "live": False,
+             "hint": "never trimmed; going over only logs a warning"},
+            {"name": "context_memory_tokens", "label": "Retrieved memories", "type": "number", "live": False},
+            {"name": "context_summary_tokens", "label": "Rolling summary", "type": "number", "live": False},
+        ],
+    },
+    {
         "title": "Memory / embedding",
         "fields": [
             {"name": "embedding_backend", "label": "Embedding backend", "type": "select",
@@ -597,6 +609,7 @@ def create_app(
             store=store,
             llm=resolved_llm or _default_llm(resolved_settings),
             memory=resolved_memory,
+            context_builder=ContextBuilder(ContextBudget.from_settings(resolved_settings)),
             default_model=resolved_settings.default_model,
             human_timeout_s=human_timeout_s,
         )

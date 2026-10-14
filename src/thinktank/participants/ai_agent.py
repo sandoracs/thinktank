@@ -237,6 +237,7 @@ class AIAgent:
                 agent_name=self.display_name,
                 topic=self._session.topic,
                 transcript=transcript,
+                language=self._session.language,
             ),
         )
         if not summary or not summary.content.strip():
@@ -266,6 +267,7 @@ class AIAgent:
                 agent_name=self.display_name,
                 topic=self._session.topic,
                 episodic_summary=summary.content,
+                language=self._session.language,
             ),
         )
         if lessons is None or not has_lesson(lessons.content):

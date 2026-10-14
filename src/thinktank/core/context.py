@@ -23,6 +23,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
+from thinktank.core.language import language_name
 from thinktank.core.state import SessionState
 from thinktank.domain.models import AgentConfig, MemoryHit, PersonaState, SessionConfig
 from thinktank.llm.client import ChatMessage
@@ -132,6 +133,7 @@ class ContextBuilder:
         ) or "(you are the only participant)"
         return template.render(
             persona_name=agent.persona.name,
+            language=language_name(config.language),
             persona=agent.persona.render(),
             questions=[q.model_dump() for q in config.questions],
             topic=config.topic,

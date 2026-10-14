@@ -43,3 +43,19 @@ def test_builds_system_and_working_memory() -> None:
     assert "assistant" in roles  # own message
     assert "user" in roles  # other participant's message, name-prefixed
     assert any(m.content.startswith("[Optimist]") for m in messages)
+
+
+def test_session_language_reaches_system_prompt() -> None:
+    config = SessionConfig(title="t", topic="Co-authorship", participants=[], language="hu")
+    agent = AgentConfig(id="me", model="", persona=PersonaCore(name="Skeptic", role="skeptic"))
+    state = SessionState(session_id=_session_id(), config=config)
+    messages = ContextBuilder().build(config=config, agent=agent, state=state, participants=[])
+    assert "Always speak in Hungarian" in messages[0].content
+
+
+def test_no_language_line_when_unset() -> None:
+    config = SessionConfig(title="t", topic="x", participants=[], language="")
+    agent = AgentConfig(id="me", model="", persona=PersonaCore(name="S", role="s"))
+    state = SessionState(session_id=_session_id(), config=config)
+    messages = ContextBuilder().build(config=config, agent=agent, state=state, participants=[])
+    assert "Always speak in" not in messages[0].content

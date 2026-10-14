@@ -13,6 +13,7 @@ Two side calls at session end, both with ``purpose="summary"``:
 
 from __future__ import annotations
 
+from thinktank.core.language import language_instruction
 from thinktank.llm.client import ChatMessage
 
 EPISODIC_SYSTEM = (
@@ -39,9 +40,10 @@ def episodic_messages(
     agent_name: str,
     topic: str,
     transcript: str,
+    language: str | None = None,
 ) -> list[ChatMessage]:
     return [
-        ChatMessage(role="system", content=EPISODIC_SYSTEM),
+        ChatMessage(role="system", content=_with_language(EPISODIC_SYSTEM, language)),
         ChatMessage(
             role="user",
             content=(
@@ -58,9 +60,10 @@ def long_term_messages(
     agent_name: str,
     topic: str,
     episodic_summary: str,
+    language: str | None = None,
 ) -> list[ChatMessage]:
     return [
-        ChatMessage(role="system", content=LONG_TERM_SYSTEM),
+        ChatMessage(role="system", content=_with_language(LONG_TERM_SYSTEM, language)),
         ChatMessage(
             role="user",
             content=(
@@ -70,6 +73,11 @@ def long_term_messages(
             ),
         ),
     ]
+
+
+def _with_language(system: str, language: str | None) -> str:
+    instruction = language_instruction(language)
+    return f"{system} {instruction}" if instruction else system
 
 
 def has_lesson(text: str) -> bool:

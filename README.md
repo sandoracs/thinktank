@@ -60,7 +60,7 @@ is one provider key:
 
 ```sh
 ANTHROPIC_API_KEY=sk-...          # or OPENAI_API_KEY, GEMINI_API_KEY, …
-THINKTANK_DEFAULT_MODEL=claude-3-5-sonnet-latest
+THINKTANK_DEFAULT_MODEL=claude-sonnet-5-5
 THINKTANK_HOST=127.0.0.1          # v1 stays loopback only
 THINKTANK_PORT=8080
 THINKTANK_DATABASE_URL=sqlite+aiosqlite:///./thinktank.db   # relative paths resolve against THINKTANK_DATA_DIR

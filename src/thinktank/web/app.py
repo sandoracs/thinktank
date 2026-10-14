@@ -363,7 +363,7 @@ def _agent_from_form(form: FormData) -> AgentConfig:
     initial_mood = str(form.get("initial_mood") or "neutral").strip() or "neutral"
     raw: dict[str, Any] = {
         "id": agent_id,
-        "model": str(form.get("model") or "").strip() or "claude-3-5-sonnet-latest",
+        "model": str(form.get("model") or "").strip() or get_settings().default_model,
         "temperature": temperature,
         "persona": persona,
         "drift": {"mode": mode},

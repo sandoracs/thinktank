@@ -14,7 +14,7 @@ def default_agents() -> dict[str, AgentConfig]:
     return {
         "ai_moderator": AgentConfig(
             id="ai_moderator",
-            model="anthropic/claude-3-5-sonnet",
+            model="claude-sonnet-5-5",
             temperature=0.4,
             persona=PersonaCore(
                 name="Moderator",
@@ -26,7 +26,7 @@ def default_agents() -> dict[str, AgentConfig]:
         ),
         "skeptic_methodologist": AgentConfig(
             id="skeptic_methodologist",
-            model="anthropic/claude-3-5-sonnet",
+            model="claude-sonnet-5-5",
             temperature=0.7,
             persona=PersonaCore(
                 name="Dr. Samuel Reed",
@@ -41,7 +41,7 @@ def default_agents() -> dict[str, AgentConfig]:
         ),
         "pragmatic_editor": AgentConfig(
             id="pragmatic_editor",
-            model="anthropic/claude-3-5-sonnet",
+            model="claude-sonnet-5-5",
             temperature=0.7,
             persona=PersonaCore(
                 name="Clara Grant",
@@ -55,7 +55,7 @@ def default_agents() -> dict[str, AgentConfig]:
         ),
         "ai_optimist": AgentConfig(
             id="ai_optimist",
-            model="anthropic/claude-3-5-sonnet",
+            model="claude-sonnet-5-5",
             temperature=0.9,
             persona=PersonaCore(
                 name="Lily Carter",

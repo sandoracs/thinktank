@@ -44,7 +44,7 @@ class Settings(BaseSettings):
 
     # --- llm defaults ---
     default_model: str = Field(
-        default="claude-3-5-sonnet-latest",
+        default="claude-sonnet-5-5",
         description="Fallback LiteLLM model string when an agent template omits one.",
     )
     llm_timeout_s: float = Field(default=120.0, gt=0, description="Per-call timeout for LLM requests.")

@@ -39,7 +39,7 @@ class SessionManager:
         llm: LLMClient,
         memory: MemoryBackend | None = None,
         context_builder: ContextBuilder | None = None,
-        default_model: str = "claude-3-5-sonnet-latest",
+        default_model: str = "claude-sonnet-5-5",
         human_timeout_s: float = 60.0,
         remote_client: httpx.AsyncClient | None = None,
     ) -> None:

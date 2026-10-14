@@ -75,6 +75,38 @@ def long_term_messages(
     ]
 
 
+ROLLING_SYSTEM = (
+    "You keep the running memory of an AI debate participant during a live session. "
+    "Update the participant's summary of the discussion so far with the new messages: "
+    "who argued what (by name), where people agree or disagree, open questions, and the "
+    "participant's own positions. Keep it compact and factual, first person for the "
+    "participant's own points. Do not invent content. Output only the updated summary."
+)
+
+
+def rolling_summary_messages(
+    *,
+    agent_name: str,
+    topic: str,
+    previous_summary: str,
+    new_transcript: str,
+    language: str | None = None,
+) -> list[ChatMessage]:
+    """Fold ``new_transcript`` into ``previous_summary`` (in-session memory)."""
+    return [
+        ChatMessage(role="system", content=_with_language(ROLLING_SYSTEM, language)),
+        ChatMessage(
+            role="user",
+            content=(
+                f"Participant: {agent_name}\n"
+                f"Session topic: {topic}\n"
+                f"Summary so far:\n{previous_summary.strip() or '(empty)'}\n\n"
+                f"New messages:\n{new_transcript}"
+            ),
+        ),
+    ]
+
+
 def _with_language(system: str, language: str | None) -> str:
     instruction = language_instruction(language)
     return f"{system} {instruction}" if instruction else system

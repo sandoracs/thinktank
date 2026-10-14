@@ -25,7 +25,7 @@ from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 from thinktank.core.language import language_name
 from thinktank.core.state import SessionState
-from thinktank.domain.models import AgentConfig, MemoryHit, PersonaState, SessionConfig
+from thinktank.domain.models import AgentConfig, MemoryHit, Message, PersonaState, SessionConfig
 from thinktank.llm.client import ChatMessage
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent / "llm" / "prompts"
@@ -85,14 +85,21 @@ class ContextBuilder:
         memories: list[MemoryHit] | None = None,
         summary: str | None = None,
         turn_instruction: str | None = None,
+        working_messages: list[Message] | None = None,
     ) -> list[ChatMessage]:
+        """Assemble the turn context.
+
+        ``working_messages`` overrides the default working-memory slice (the last
+        ``memory.working_window`` messages); the agent passes it when a rolling
+        summary already covers everything older than that list.
+        """
         base_system = self._base_system(config, agent, state, participants)
         base_cost = self.count(base_system)
 
         memories_text = self._memories_text(memories or [])
         summary_text = summary or ""
 
-        working = self._working_memory(state, agent, participants)
+        working = self._working_memory(state, agent, participants, working_messages)
 
         # Budget: ensure base fits, then size the trimmable sections.
         self._assert_fits(base_system, base_cost)
@@ -173,9 +180,14 @@ class ContextBuilder:
         state: SessionState,
         agent: AgentConfig,
         participants: list[ParticipantInfo],
+        working_messages: list[Message] | None = None,
     ) -> list[ChatMessage]:
         names = {p.id: p.name for p in participants}
-        window = state.messages[-agent.memory.working_window :]
+        window = (
+            working_messages
+            if working_messages is not None
+            else state.messages[-agent.memory.working_window :]
+        )
         raw: list[ChatMessage] = []
         for msg in window:
             if msg.speaker_id == agent.id:

@@ -107,6 +107,13 @@ class MemoryConfig(BaseModel):
     working_window: int = Field(default=12, ge=1)
     retrieval_k: int = Field(default=5, ge=1)
     long_term: bool = True
+    rolling_summary: bool = Field(
+        default=True,
+        description=(
+            "Summarise messages that fall out of the working window, so the agent keeps "
+            "the earlier part of a long session instead of forgetting it."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

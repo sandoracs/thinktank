@@ -35,7 +35,12 @@ from thinktank.domain.models import (
 )
 from thinktank.llm.client import ChatMessage, LLMClient, LLMResult, Purpose
 from thinktank.memory.base import MemoryBackend
-from thinktank.memory.distill import episodic_messages, has_lesson, long_term_messages
+from thinktank.memory.distill import (
+    episodic_messages,
+    has_lesson,
+    long_term_messages,
+    rolling_summary_messages,
+)
 from thinktank.participants.base import TurnContext
 from thinktank.persona.consistency import ConsistencyJudgment, consistency_messages
 from thinktank.persona.prompts import reflection_messages
@@ -72,17 +77,23 @@ class AIAgent:
         self._memory = memory
         self._emit = emit
         self._session_id: uuid.UUID | None = None
+        # Rolling in-session summary: covers state.messages[:_summarised_upto].
+        self._summary = ""
+        self._summarised_upto = 0
 
     async def speak(self, ctx: TurnContext) -> Message:
         self._session_id = ctx.session_id
         memories = await self._retrieve_memories(ctx)
+        working = await self._update_rolling_summary()
         messages = self._context_builder.build(
             config=self._session,
             agent=self._config,
             state=self._state,
             participants=self._participants,
             memories=memories,
+            summary=self._summary or None,
             turn_instruction=ctx.turn_instruction,
+            working_messages=working,
         )
         result = await self._llm.complete(
             model=self._config.model,
@@ -126,6 +137,51 @@ class AIAgent:
                 "cost_usd": cost_usd,
             },
         )
+
+    async def _update_rolling_summary(self) -> list[Message] | None:
+        """Fold messages that left the working window into the rolling summary.
+
+        Summarising one message per turn would double the call count, so
+        evicted messages are batched: they stay in the working context until
+        ``batch`` of them have piled up beyond the window, then one summary call
+        absorbs them. Returns the working-memory slice to use, or ``None`` for
+        the builder's default window when rolling summaries are off.
+        """
+        mem = self._config.memory
+        if not mem.rolling_summary:
+            return None
+        messages = self._state.messages
+        window = mem.working_window
+        batch = max(1, window // 2)
+        pending = len(messages) - self._summarised_upto
+        if pending > window + batch:
+            cut = len(messages) - window
+            chunk = messages[self._summarised_upto : cut]
+            result = await self._complete(
+                purpose="summary",
+                messages=rolling_summary_messages(
+                    agent_name=self.display_name,
+                    topic=self._session.topic,
+                    previous_summary=self._summary,
+                    new_transcript=self._render(chunk),
+                    language=self._session.language,
+                ),
+            )
+            if result is not None and result.content.strip():
+                self._summary = result.content.strip()
+                self._summarised_upto = cut
+            # On failure keep the messages in the working context and retry on
+            # the next turn rather than dropping them unsummarised.
+        return messages[self._summarised_upto :]
+
+    def _name(self, participant_id: str) -> str:
+        for info in self._participants:
+            if info.id == participant_id:
+                return info.name
+        return participant_id
+
+    def _render(self, messages: list[Message]) -> str:
+        return "\n".join(f"{self._name(m.speaker_id)}: {m.content}" for m in messages)
 
     async def _consistency_check(self, candidate: str) -> tuple[str, int, int, float]:
         """Optional persona-consistency pass (M6).

@@ -131,7 +131,7 @@ them.
 ## Verify
 
 ```sh
-uv run pytest -q                 # 126 tests
+uv run pytest -q                 # 130 tests
 uv run ruff check src tests      # lint
 uv run pyright                   # strict type-check (0 errors)
 ```

@@ -60,7 +60,7 @@ is one provider key:
 
 ```sh
 ANTHROPIC_API_KEY=sk-...          # or OPENAI_API_KEY, GEMINI_API_KEY, …
-THINKTANK_DEFAULT_MODEL=claude-3-5-sonnet-latest
+THINKTANK_DEFAULT_MODEL=claude-sonnet-5-5
 THINKTANK_HOST=127.0.0.1          # v1 stays loopback only
 THINKTANK_PORT=8080
 THINKTANK_DATABASE_URL=sqlite+aiosqlite:///./thinktank.db   # relative paths resolve against THINKTANK_DATA_DIR
@@ -81,7 +81,11 @@ session creation only decide *which seat* someone speaks from over the
 WebSocket — they are not access control.
 
 So: the default `THINKTANK_HOST=127.0.0.1` keeps it on loopback, and that is
-the safe default. The Docker image binds `0.0.0.0` so `-p` works — publish that
+the safe default. Loopback alone does not stop *other websites in your own
+browser* from talking to the hub, so it also refuses cross-site requests
+(form POSTs, WebSocket handshakes whose `Origin` is another site) and any
+`Host` header outside `THINKTANK_ALLOWED_HOSTS` (DNS rebinding). If you reach
+the hub by a LAN name or IP, add that name to `THINKTANK_ALLOWED_HOSTS`. The Docker image binds `0.0.0.0` so `-p` works — publish that
 port only to localhost (`-p 127.0.0.1:8080:8080`), a private network you trust,
 or an authenticating reverse proxy in front.
 
@@ -127,7 +131,7 @@ them.
 ## Verify
 
 ```sh
-uv run pytest -q                 # 107 tests
+uv run pytest -q                 # 134 tests
 uv run ruff check src tests      # lint
 uv run pyright                   # strict type-check (0 errors)
 ```

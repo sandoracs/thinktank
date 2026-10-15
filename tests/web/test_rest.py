@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from pydantic import BaseModel
 
@@ -546,7 +547,7 @@ def test_approval_flow_over_api(tmp_path: Path) -> None:
         database_url=f"sqlite+aiosqlite:///{db}",
         human_timeout_s=30,
     )
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         # Register an APPROVED-mode agent in the library.
         agent_cfg = {
             "id": "approved_agent",
@@ -703,7 +704,7 @@ def test_agent_inspector_timeline(tmp_path: Path) -> None:
         database_url=f"sqlite+aiosqlite:///{tmp_path / 'inspector.db'}",
         human_timeout_s=30,
     )
-    with TestClient(app) as c:
+    with TestClient(app, base_url="http://localhost") as c:
         body = {
             "title": "inspector",
             "topic": "AI co-authorship",
@@ -851,3 +852,24 @@ def test_memory_search_endpoint(client: TestClient) -> None:
     assert client.get(f"/api/sessions/{sid}/agents/does_not_exist/memory", params={"q": "fake"}).status_code == 404
     assert client.get("/api/sessions/not-a-uuid/agents/ai_optimist/memory").status_code == 404
     assert client.get(f"/api/sessions/{sid}/agents/ai_optimist/memory", params={"layer": "bogus"}).status_code == 400
+
+
+@pytest.mark.parametrize(("values", "expected"), [(["off", "on"], True), (["off"], False), (None, True)])
+def test_builder_form_moderator_round_summary(client: TestClient, values: list[str] | None, expected: bool) -> None:
+    """Hidden "off" + checkbox "on": checked -> on, unchecked -> off, field absent -> default (on)."""
+    form: dict[str, object] = {
+        "title": "Summary toggle",
+        "topic": "T",
+        "agents": ["ai_moderator", "ai_optimist"],
+        "moderator": "ai_moderator",
+        "max_rounds": "1",
+        "max_cost_usd": "2.0",
+    }
+    if values is not None:
+        form["moderator_round_summary"] = values
+    response = client.post("/sessions", data=form, follow_redirects=False)
+    assert response.status_code == 303
+    session_id = response.headers["location"].split("/sessions/")[1].split("?")[0]
+    state = client.get(f"/api/sessions/{session_id}").json()
+    assert state["config"]["moderator_round_summary"] is expected
+    client.post(f"/api/sessions/{session_id}/stop")

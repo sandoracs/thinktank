@@ -17,12 +17,19 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     db = tmp_path / "web_test.db"
     # Hermetic: pin the test-critical fields (init kwargs outrank both OS env
     # vars and the developer's .env) so the suite never touches the network.
-    settings = Settings(_env_file=None, fake_llm=True, embedding_backend="fake", data_dir=tmp_path)  # pyright: ignore[reportCallIssue]
+    # Starlette's WebSocket test client hard-codes Host "testserver".
+    settings = Settings(  # pyright: ignore[reportCallIssue]
+        _env_file=None,  # pyright: ignore[reportCallIssue]
+        fake_llm=True,
+        embedding_backend="fake",
+        data_dir=tmp_path,
+        allowed_hosts="localhost,testserver",
+    )
     app = create_app(
         llm=FakeLLM(responses=[f"fake-reply-{i}" for i in range(60)]),
         database_url=f"sqlite+aiosqlite:///{db}",
         human_timeout_s=30,
         settings=settings,
     )
-    with TestClient(app) as test_client:
+    with TestClient(app, base_url="http://localhost") as test_client:
         yield test_client

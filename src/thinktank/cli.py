@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from thinktank.config import get_settings
+from thinktank.core.context import ContextBudget, ContextBuilder
 from thinktank.core.manager import SessionManager
 from thinktank.domain.events import Event, EventType, MessagePostedPayload
 from thinktank.domain.models import AgentConfig, RemoteConfig, SessionConfig
@@ -75,6 +76,7 @@ async def _run(args: argparse.Namespace) -> int:
         store=store,
         llm=_build_llm(args.fake),
         memory=SQLiteMemoryBackend(engine, embedder),
+        context_builder=ContextBuilder(ContextBudget.from_settings(settings)),
         default_model=settings.default_model,
         human_timeout_s=args.human_timeout,
     )

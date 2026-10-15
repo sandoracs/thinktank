@@ -13,6 +13,7 @@ Two side calls at session end, both with ``purpose="summary"``:
 
 from __future__ import annotations
 
+from thinktank.core.language import language_instruction
 from thinktank.llm.client import ChatMessage
 
 EPISODIC_SYSTEM = (
@@ -39,9 +40,10 @@ def episodic_messages(
     agent_name: str,
     topic: str,
     transcript: str,
+    language: str | None = None,
 ) -> list[ChatMessage]:
     return [
-        ChatMessage(role="system", content=EPISODIC_SYSTEM),
+        ChatMessage(role="system", content=_with_language(EPISODIC_SYSTEM, language)),
         ChatMessage(
             role="user",
             content=(
@@ -58,9 +60,10 @@ def long_term_messages(
     agent_name: str,
     topic: str,
     episodic_summary: str,
+    language: str | None = None,
 ) -> list[ChatMessage]:
     return [
-        ChatMessage(role="system", content=LONG_TERM_SYSTEM),
+        ChatMessage(role="system", content=_with_language(LONG_TERM_SYSTEM, language)),
         ChatMessage(
             role="user",
             content=(
@@ -70,6 +73,43 @@ def long_term_messages(
             ),
         ),
     ]
+
+
+ROLLING_SYSTEM = (
+    "You keep the running memory of an AI debate participant during a live session. "
+    "Update the participant's summary of the discussion so far with the new messages: "
+    "who argued what (by name), where people agree or disagree, open questions, and the "
+    "participant's own positions. Keep it compact and factual, first person for the "
+    "participant's own points. Do not invent content. Output only the updated summary."
+)
+
+
+def rolling_summary_messages(
+    *,
+    agent_name: str,
+    topic: str,
+    previous_summary: str,
+    new_transcript: str,
+    language: str | None = None,
+) -> list[ChatMessage]:
+    """Fold ``new_transcript`` into ``previous_summary`` (in-session memory)."""
+    return [
+        ChatMessage(role="system", content=_with_language(ROLLING_SYSTEM, language)),
+        ChatMessage(
+            role="user",
+            content=(
+                f"Participant: {agent_name}\n"
+                f"Session topic: {topic}\n"
+                f"Summary so far:\n{previous_summary.strip() or '(empty)'}\n\n"
+                f"New messages:\n{new_transcript}"
+            ),
+        ),
+    ]
+
+
+def _with_language(system: str, language: str | None) -> str:
+    instruction = language_instruction(language)
+    return f"{system} {instruction}" if instruction else system
 
 
 def has_lesson(text: str) -> bool:

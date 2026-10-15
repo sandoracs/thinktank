@@ -34,6 +34,7 @@ from starlette.background import BackgroundTask
 from starlette.datastructures import FormData
 
 from thinktank.config import Settings, get_settings, reload_settings, write_env_settings
+from thinktank.core.context import ContextBudget, ContextBuilder
 from thinktank.core.manager import SessionManager
 from thinktank.core.state import STATUS_CREATED, SessionState, apply_event
 from thinktank.domain.events import Event, EventType
@@ -70,6 +71,7 @@ from thinktank.web import agents as agent_repo
 from thinktank.web import session_templates as session_tpl
 from thinktank.web.hub import HubSession, WebHub
 from thinktank.web.render import sidebar_fragment, transcript_fragment
+from thinktank.web.security import SameOriginGuard, parse_allowed_hosts
 
 _WEB = Path(__file__).parent
 _TEMPLATES = _WEB / "templates"
@@ -305,6 +307,8 @@ def _config_from_form(form: FormData) -> SessionConfig:
         "moderator": moderator,
         "strategy": {"name": strategy_name, "params": strategy_params},
         "stop": {"max_rounds": max_rounds, "max_cost_usd": max_cost},
+        # Hidden "off" + checkbox "on": the last submitted value wins.
+        "moderator_round_summary": str(form.get("moderator_round_summary") or "on") == "on",
     }
     try:
         return SessionConfig.model_validate(raw)
@@ -361,7 +365,7 @@ def _agent_from_form(form: FormData) -> AgentConfig:
     initial_mood = str(form.get("initial_mood") or "neutral").strip() or "neutral"
     raw: dict[str, Any] = {
         "id": agent_id,
-        "model": str(form.get("model") or "").strip() or "claude-3-5-sonnet-latest",
+        "model": str(form.get("model") or "").strip() or get_settings().default_model,
         "temperature": temperature,
         "persona": persona,
         "drift": {"mode": mode},
@@ -435,6 +439,17 @@ SETTINGS_SECTIONS: list[dict[str, Any]] = [
         ],
     },
     {
+        "title": "Agent context budget",
+        "fields": [
+            {"name": "context_total_tokens", "label": "Total per turn (tokens)", "type": "number", "live": False,
+             "hint": "estimated tokens; older working-memory messages are trimmed first"},
+            {"name": "context_system_tokens", "label": "Persona + rules soft cap", "type": "number", "live": False,
+             "hint": "never trimmed; going over only logs a warning"},
+            {"name": "context_memory_tokens", "label": "Retrieved memories", "type": "number", "live": False},
+            {"name": "context_summary_tokens", "label": "Rolling summary", "type": "number", "live": False},
+        ],
+    },
+    {
         "title": "Memory / embedding",
         "fields": [
             {"name": "embedding_backend", "label": "Embedding backend", "type": "select",
@@ -451,6 +466,8 @@ SETTINGS_SECTIONS: list[dict[str, Any]] = [
             {"name": "host", "label": "Host", "type": "text", "live": False,
              "hint": "in v1, only 127.0.0.1 is recommended"},
             {"name": "port", "label": "Port", "type": "number", "live": False},
+            {"name": "allowed_hosts", "label": "Allowed Host names", "type": "text", "live": False,
+             "hint": "comma-separated; add your LAN name/IP if you expose the hub; * disables the check"},
         ],
     },
     {
@@ -597,6 +614,7 @@ def create_app(
             store=store,
             llm=resolved_llm or _default_llm(resolved_settings),
             memory=resolved_memory,
+            context_builder=ContextBuilder(ContextBudget.from_settings(resolved_settings)),
             default_model=resolved_settings.default_model,
             human_timeout_s=human_timeout_s,
         )
@@ -619,6 +637,9 @@ def create_app(
         await dispose(engine)
 
     app = FastAPI(title="ThinkTank", version="0.1.0", lifespan=lifespan)
+    # No auth: refuse other websites (CSRF / cross-site WebSocket) and foreign
+    # Host headers (DNS rebinding). See thinktank.web.security.
+    app.add_middleware(SameOriginGuard, allowed_hosts=parse_allowed_hosts(resolved_settings.allowed_hosts))
     app.mount("/static", StaticFiles(directory=str(_WEB / "static")), name="static")
 
     @app.middleware("http")

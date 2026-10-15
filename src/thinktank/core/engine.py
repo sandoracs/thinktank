@@ -151,6 +151,13 @@ class SessionEngine:
                 await self._play_round()
                 if self._state.round_complete:
                     await self._end_round()
+                    await self._moderator_round_summary(round_no)
+                else:
+                    # Stopped mid-round (manual stop, cost/time/message limit):
+                    # still close it, so every RoundStarted has a RoundEnded.
+                    # No reflection on a partial round.
+                    await self.emit(EventType.ROUND_ENDED, round=self._state.current_round, partial=True)
+                    break
                 round_no += 1
         finally:
             await self._moderator_close()
@@ -223,6 +230,9 @@ class SessionEngine:
             return
         for pid, participant in self._participants.items():
             if participant.kind != "ai" or pid in self._state.disabled:
+                continue
+            if pid == self._config.moderator:
+                # The moderator stays neutral and takes no side on the questions.
                 continue
             drift = getattr(participant, "drift", None)
             if (
@@ -332,17 +342,19 @@ class SessionEngine:
             return False
         proposal = ReflectionResult.model_validate(pending["proposal"])
         current = self._current_persona(agent_id)
+        cause_seq = await self._approval_cause_seq(agent_id)
         if decision == "approve":
             new_state = apply_updates(current, proposal)
             version = await self._store.next_persona_version(agent_id, self._session_id)
             await self._store.append_persona_version(
-                agent_id, self._session_id, version, new_state.model_dump(), None
+                agent_id, self._session_id, version, new_state.model_dump(), cause_seq
             )
             await self.emit(
                 EventType.PERSONA_UPDATED,
                 agent_id=agent_id,
                 version=version,
                 state=new_state,
+                cause_seq=cause_seq,
                 notes=["approved"],
             )
         else:
@@ -350,6 +362,7 @@ class SessionEngine:
                 EventType.PERSONA_UPDATE_REJECTED,
                 agent_id=agent_id,
                 reason="not_approved",
+                cause_seq=cause_seq,
                 notes=["rejected by approver"],
             )
         await self._store.decide_approval_row(
@@ -357,6 +370,19 @@ class SessionEngine:
         )
         await self.emit(EventType.APPROVAL_DECIDED, agent_id=agent_id, decision=decision)
         return True
+
+    async def _approval_cause_seq(self, agent_id: str) -> int | None:
+        """The reflection seq behind the agent's latest approval request.
+
+        Keeps the ReflectionProposed -> PersonaUpdated chain intact for analysis
+        without adding a column to the approvals table.
+        """
+        events = await self._store.get_events(self._session_id)
+        for event in reversed(events):
+            if event.type is EventType.APPROVAL_REQUESTED and event.payload.get("agent_id") == agent_id:
+                seq = event.payload.get("cause_seq")
+                return int(seq) if seq is not None else None
+        return None
 
     async def _start_round(self, round_no: int) -> None:
         await self.emit(EventType.ROUND_STARTED, round=round_no)
@@ -368,46 +394,72 @@ class SessionEngine:
         return self._participants.get(self._config.moderator)
 
     async def _moderator_open(self) -> None:
-        moderator = self._moderator()
-        if moderator is None or moderator.kind != "ai":
-            return
-        ctx = TurnContext(
-            session_id=self._session_id,
-            round=0,
-            turn_instruction="Open the discussion: restate the topic and invite the first contributions.",
+        await self._moderator_speak(
+            round_no=0,
+            instruction="Open the discussion: restate the topic and invite the first contributions.",
+            component="moderator_open",
         )
-        try:
-            message = await moderator.speak(ctx)
-        except Exception as exc:
-            logger.exception("moderator open failed")
-            await self.emit(EventType.ERROR, component="moderator_open", message=str(exc))
-            return
-        if message is not None:
-            await self._post(message.model_copy(update={"kind": "moderator"}))
 
     async def _moderator_close(self) -> None:
-        moderator = self._moderator()
-        if moderator is None or moderator.kind != "ai":
-            return
-        ctx = TurnContext(
-            session_id=self._session_id,
-            round=self._state.current_round,
-            turn_instruction="Close the discussion: summarise the main positions and any remaining disagreements.",
+        await self._moderator_speak(
+            round_no=self._state.current_round,
+            instruction="Close the discussion: summarise the main positions and any remaining disagreements.",
+            component="moderator_close",
         )
+
+    async def _moderator_round_summary(self, round_no: int) -> None:
+        """Between-round wrap-up by the moderator (on by default).
+
+        Skipped after the last round, where the closing statement already sums
+        up, and when the session is about to stop anyway.
+        """
+        if not self._config.moderator_round_summary:
+            return
+        max_rounds = self._config.stop.max_rounds
+        if max_rounds is not None and round_no >= max_rounds:
+            return
+        if (await self._should_stop())[0]:
+            return
+        await self._moderator_speak(
+            round_no=round_no,
+            instruction=(
+                f"Round {round_no} is over. As the neutral moderator, briefly sum it up: who argued what, "
+                "where participants agree and where they disagree, and the focus for the next round. "
+                "Do not take a side."
+            ),
+            component="moderator_summary",
+        )
+
+    async def _moderator_speak(self, *, round_no: int, instruction: str, component: str) -> None:
+        """Give the floor to the moderator outside the rounds (open / close).
+
+        The moderator is not part of the turn rotation; these are its turns. A
+        human moderator gets a ``TurnAssigned`` so their client shows the prompt
+        (and the usual human timeout applies); an AI moderator just speaks.
+        """
+        moderator = self._moderator()
+        if moderator is None or moderator.kind not in ("ai", "human"):
+            return
+        if moderator.kind == "human":
+            await self.emit(EventType.TURN_ASSIGNED, speaker_id=moderator.id, strategy="moderator")
+        ctx = TurnContext(session_id=self._session_id, round=round_no, turn_instruction=instruction)
         try:
             message = await moderator.speak(ctx)
         except Exception as exc:
-            logger.exception("moderator close failed")
-            await self.emit(EventType.ERROR, component="moderator_close", message=str(exc))
+            logger.exception("%s failed", component)
+            await self.emit(EventType.ERROR, component=component, message=str(exc))
             return
-        if message is not None:
-            await self._post(message.model_copy(update={"kind": "moderator"}))
+        if message is None:
+            if moderator.kind == "human":
+                await self.emit(EventType.TURN_SKIPPED, speaker_id=moderator.id, reason="human_timeout")
+            return
+        await self._post(message.model_copy(update={"kind": "moderator"}))
 
     # -- stop conditions ---------------------------------------------------
     async def _should_stop(self) -> tuple[bool, str]:
         if self._gate.is_stopped:
             return True, self._stop_reason or "manual"
-        ids = self._config.participant_ids()
+        ids = self._config.speaker_ids()
         if ids and all(pid in self._state.disabled for pid in ids):
             return True, "all_disabled"
         cfg = self._config.stop

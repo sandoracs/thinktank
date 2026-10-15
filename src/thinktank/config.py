@@ -34,10 +34,17 @@ class Settings(BaseSettings):
     # --- network / hub ---
     host: str = Field(default="127.0.0.1", description="Bind host; v1 stays loopback only.")
     port: int = Field(default=8080, ge=1, le=65535)
+    allowed_hosts: str = Field(
+        default="localhost,127.0.0.1,::1",
+        description=(
+            "Comma-separated Host names the hub answers to (DNS-rebinding guard). "
+            "Add your LAN name/IP if you expose the hub; '*' disables the check."
+        ),
+    )
 
     # --- llm defaults ---
     default_model: str = Field(
-        default="claude-3-5-sonnet-latest",
+        default="claude-sonnet-5-5",
         description="Fallback LiteLLM model string when an agent template omits one.",
     )
     llm_timeout_s: float = Field(default=120.0, gt=0, description="Per-call timeout for LLM requests.")
@@ -59,6 +66,17 @@ class Settings(BaseSettings):
         default=False,
         description="If true, use the offline FakeLLM instead of LiteLLM (``THINKTANK_FAKE_LLM=1``).",
     )
+    # --- agent context budget (estimated tokens) ---
+    context_total_tokens: int = Field(
+        default=16000, ge=1000, description="Per-turn context budget for one agent (all sections)."
+    )
+    context_system_tokens: int = Field(
+        default=3000,
+        ge=200,
+        description="Soft cap for persona + rules + participants + questions; exceeding it only logs a warning.",
+    )
+    context_memory_tokens: int = Field(default=1500, ge=0, description="Budget for retrieved memories.")
+    context_summary_tokens: int = Field(default=1500, ge=0, description="Budget for the rolling in-session summary.")
     # --- logging ---
     log_level: str = Field(default="INFO", description="structlog level name (DEBUG, INFO, ...).")
     log_json: bool = Field(default=True, description="Emit JSON logs instead of pretty console logs.")

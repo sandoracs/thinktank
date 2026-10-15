@@ -107,6 +107,13 @@ class MemoryConfig(BaseModel):
     working_window: int = Field(default=12, ge=1)
     retrieval_k: int = Field(default=5, ge=1)
     long_term: bool = True
+    rolling_summary: bool = Field(
+        default=True,
+        description=(
+            "Summarise messages that fall out of the working window, so the agent keeps "
+            "the earlier part of a long session instead of forgetting it."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -225,6 +232,13 @@ class SessionConfig(BaseModel):
     strategy: StrategyRef = Field(default_factory=StrategyRef)
     stop: StopConditions = Field(default_factory=StopConditions)
     reflection_every_rounds: int = Field(default=1, ge=1)
+    moderator_round_summary: bool = Field(
+        default=True,
+        description=(
+            "After each round (except the last), the moderator briefly sums up who argued what, "
+            "where people agree or disagree, and the focus for the next round."
+        ),
+    )
     language: str = "en"
 
     @model_validator(mode="after")
@@ -243,6 +257,14 @@ class SessionConfig(BaseModel):
 
     def participant_ids(self) -> list[str]:
         return [p.participant_id for p in self.participants]
+
+    def speaker_ids(self) -> list[str]:
+        """Participants who take turns in the rounds: everyone except the moderator.
+
+        The moderator is not a regular participant. It opens and closes the
+        session (see the engine) but is never scheduled by a turn strategy.
+        """
+        return [pid for pid in self.participant_ids() if pid != self.moderator]
 
 
 # ---------------------------------------------------------------------------

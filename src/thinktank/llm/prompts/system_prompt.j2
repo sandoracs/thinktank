@@ -6,7 +6,10 @@
 - Speak in your own voice; never speak for or as another participant.
 - React concretely to what others have said, and address them by name.
 - Stay within your hard boundaries.
-- Keep to the length limit and do not restate your earlier points.
+{% if language %}
+- Always speak in {{ language }}, whatever language the others use.
+{% endif %}
+- Be concise and do not restate your earlier points.
 {% if questions %}
 # Debate questions (the discussion is measured against these)
 {% for q in questions %}- [{{ q.id }}] {{ q.text }}

@@ -120,6 +120,10 @@ async def test_approved_mode_requests_and_applies_on_approve(approved: Harness) 
     assert await manager.decide_approval(sid, AGENT_ID, "approve") is True
     events = await store.get_events(sid)
     assert _by_type(events, EventType.PERSONA_UPDATED)
+    # The approved update points back at the reflection that proposed it.
+    proposed = _by_type(events, EventType.REFLECTION_PROPOSED)
+    updated = _by_type(events, EventType.PERSONA_UPDATED)[-1]
+    assert updated.payload.get("cause_seq") in {e.seq for e in proposed}
     assert _by_type(events, EventType.APPROVAL_DECIDED)[0].payload.get("decision") == "approve"
     state = await manager.get_state(sid)
     assert state.persona_states[AGENT_ID].stances[Q1].position == "disclose-always"

@@ -232,6 +232,13 @@ class SessionConfig(BaseModel):
     strategy: StrategyRef = Field(default_factory=StrategyRef)
     stop: StopConditions = Field(default_factory=StopConditions)
     reflection_every_rounds: int = Field(default=1, ge=1)
+    moderator_round_summary: bool = Field(
+        default=True,
+        description=(
+            "After each round (except the last), the moderator briefly sums up who argued what, "
+            "where people agree or disagree, and the focus for the next round."
+        ),
+    )
     language: str = "en"
 
     @model_validator(mode="after")

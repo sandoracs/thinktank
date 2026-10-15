@@ -7,6 +7,7 @@
 {% set sel_agents = (cfg.participants | selectattr('agent', 'ne', none) | map(attribute='agent') | list) if cfg else [] %}
 {% set humans = (cfg.participants | selectattr('human', 'ne', none) | map(attribute='human') | join(', ')) if cfg else '' %}
 {% set moderator = (cfg.moderator or '') if cfg else '' %}
+{% set round_summary = cfg.moderator_round_summary if cfg else true %}
 {% set strategy = (cfg.strategy.name if cfg.strategy else 'round_robin') if cfg else 'round_robin' %}
 {% set params_json = ((cfg.strategy.params if cfg.strategy else {}) | tojson) if cfg else '{}' %}
 {% set max_rounds = (cfg.stop.max_rounds if cfg.stop.max_rounds is not none else 3) if cfg else 3 %}
@@ -53,6 +54,11 @@
         <option value="{{ a.id }}" {{ 'selected' if a.id == moderator else '' }}>{{ a.persona.name }}</option>
         {% endfor %}
       </select>
+    </label>
+    <input type="hidden" name="moderator_round_summary" value="off">
+    <label class="check">
+      <input type="checkbox" name="moderator_round_summary" value="on" {{ 'checked' if round_summary else '' }}>
+      Moderator sums up after each round
     </label>
   </fieldset>
 
@@ -213,6 +219,8 @@
     });
     setField("humans", humans.join(", "));
     setField("moderator", cfg.moderator);
+    const summary = document.querySelector('input[type="checkbox"][name="moderator_round_summary"]');
+    if (summary) summary.checked = cfg.moderator_round_summary !== false;
 
     const strategy = (cfg.strategy && cfg.strategy.name) || "round_robin";
     setField("strategy", strategy);

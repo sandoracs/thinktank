@@ -151,6 +151,7 @@ class SessionEngine:
                 await self._play_round()
                 if self._state.round_complete:
                     await self._end_round()
+                    await self._moderator_round_summary(round_no)
                 else:
                     # Stopped mid-round (manual stop, cost/time/message limit):
                     # still close it, so every RoundStarted has a RoundEnded.
@@ -404,6 +405,29 @@ class SessionEngine:
             round_no=self._state.current_round,
             instruction="Close the discussion: summarise the main positions and any remaining disagreements.",
             component="moderator_close",
+        )
+
+    async def _moderator_round_summary(self, round_no: int) -> None:
+        """Between-round wrap-up by the moderator (on by default).
+
+        Skipped after the last round, where the closing statement already sums
+        up, and when the session is about to stop anyway.
+        """
+        if not self._config.moderator_round_summary:
+            return
+        max_rounds = self._config.stop.max_rounds
+        if max_rounds is not None and round_no >= max_rounds:
+            return
+        if (await self._should_stop())[0]:
+            return
+        await self._moderator_speak(
+            round_no=round_no,
+            instruction=(
+                f"Round {round_no} is over. As the neutral moderator, briefly sum it up: who argued what, "
+                "where participants agree and where they disagree, and the focus for the next round. "
+                "Do not take a side."
+            ),
+            component="moderator_summary",
         )
 
     async def _moderator_speak(self, *, round_no: int, instruction: str, component: str) -> None:

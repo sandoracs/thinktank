@@ -307,6 +307,8 @@ def _config_from_form(form: FormData) -> SessionConfig:
         "moderator": moderator,
         "strategy": {"name": strategy_name, "params": strategy_params},
         "stop": {"max_rounds": max_rounds, "max_cost_usd": max_cost},
+        # Hidden "off" + checkbox "on": the last submitted value wins.
+        "moderator_round_summary": str(form.get("moderator_round_summary") or "on") == "on",
     }
     try:
         return SessionConfig.model_validate(raw)

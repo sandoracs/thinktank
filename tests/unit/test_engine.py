@@ -98,6 +98,7 @@ async def test_stop_mid_round_still_closes_the_round(tmp_path: Path) -> None:
 @pytest.mark.asyncio
 async def test_ai_moderator_only_opens_and_closes(tmp_path: Path) -> None:
     engine, store, mgr, config, agents = _build(tmp_path)
+    config = config.model_copy(update={"moderator_round_summary": False})
     await init_db(engine)
     sess = await mgr.create_session(config, agents)
     await mgr.start(sess)
@@ -120,7 +121,7 @@ async def test_ai_moderator_only_opens_and_closes(tmp_path: Path) -> None:
 async def test_human_moderator_is_prompted_for_open_and_close(tmp_path: Path) -> None:
     engine, store, mgr, config, agents = _build(tmp_path)
     # The human seat moderates; the AI "moderator" template becomes a debater.
-    config = config.model_copy(update={"moderator": "human"})
+    config = config.model_copy(update={"moderator": "human", "moderator_round_summary": False})
     await init_db(engine)
     sess = await mgr.create_session(config, agents)
     await mgr.start(sess)
@@ -132,4 +133,30 @@ async def test_human_moderator_is_prompted_for_open_and_close(tmp_path: Path) ->
     assert [e.payload.get("strategy") for e in human_turns] == ["moderator", "moderator"]
     skipped = [e for e in events if e.type is EventType.TURN_SKIPPED and e.payload.get("speaker_id") == "human"]
     assert len(skipped) == 2  # timed out in the test, both open and close
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_moderator_sums_up_between_rounds_by_default(tmp_path: Path) -> None:
+    engine, store, mgr, config, agents = _build(tmp_path)  # max_rounds=2
+    assert config.moderator_round_summary is True
+    await init_db(engine)
+    sess = await mgr.create_session(config, agents)
+    await mgr.start(sess)
+
+    events = await store.get_events(sess.session_id)
+    seq = [
+        (e.type, e.payload["message"]["speaker_id"] if e.type is EventType.MESSAGE_POSTED else None)
+        for e in events
+        if e.type in (EventType.MESSAGE_POSTED, EventType.ROUND_ENDED, EventType.ROUND_STARTED)
+    ]
+    posted = [e.payload["message"] for e in events if e.type is EventType.MESSAGE_POSTED]
+    # open + one between-round summary (after round 1, not after the last) + close
+    assert sum(1 for m in posted if m["speaker_id"] == "moderator") == 3
+    # The summary sits between RoundEnded(1) and RoundStarted(2).
+    first_end = next(i for i, (t, _) in enumerate(seq) if t is EventType.ROUND_ENDED)
+    assert seq[first_end + 1] == (EventType.MESSAGE_POSTED, "moderator")
+    assert seq[first_end + 2][0] is EventType.ROUND_STARTED
+    speech = [c for c in mgr._llm.calls if c["purpose"] == "speech"]  # pyright: ignore[reportPrivateUsage, reportAttributeAccessIssue]
+    assert any("Round 1 is over" in c["messages"][-1].content for c in speech)
     await engine.dispose()

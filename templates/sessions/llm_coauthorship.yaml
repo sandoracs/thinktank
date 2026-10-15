@@ -20,6 +20,9 @@ participants:
   - agent: ai_moderator
 
 moderator: ai_moderator
+# The moderator opens, sums up after each round (default; set false to turn
+# off), and closes. It never takes a regular turn.
+moderator_round_summary: true
 
 strategy:
   name: round_robin

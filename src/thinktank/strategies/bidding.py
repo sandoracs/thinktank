@@ -63,7 +63,7 @@ class Bidding(TurnStrategy):
     async def on_event(self, event: Event) -> None:
         if event.type is EventType.SESSION_CREATED:
             cfg = event.payload_as(SessionCreatedPayload)
-            self._order = list(cfg.config.participant_ids())
+            self._order = list(cfg.config.speaker_ids())
         elif event.type is EventType.ROUND_STARTED:
             self._spoken = set()
         elif event.type is EventType.TURN_ASSIGNED:
@@ -75,7 +75,7 @@ class Bidding(TurnStrategy):
     # -- selection ---------------------------------------------------------
     async def next_speaker(self, state: SessionState) -> str | None:
         if not self._order and state.config is not None:
-            self._order = list(state.config.participant_ids())
+            self._order = list(state.config.speaker_ids())
         disabled = set(state.disabled)
         active = [pid for pid in self._order if pid not in disabled]
         candidates = [pid for pid in active if pid not in self._spoken]
@@ -95,7 +95,7 @@ class Bidding(TurnStrategy):
             ),
         )
         self._spoken.add(best)
-        if len(self._spoken) >= len(active):
+        if len(self._spoken.intersection(active)) >= len(active):
             state.round_complete = True
         return best
 

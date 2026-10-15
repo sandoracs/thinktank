@@ -230,6 +230,9 @@ class SessionEngine:
         for pid, participant in self._participants.items():
             if participant.kind != "ai" or pid in self._state.disabled:
                 continue
+            if pid == self._config.moderator:
+                # The moderator stays neutral and takes no side on the questions.
+                continue
             drift = getattr(participant, "drift", None)
             if (
                 drift is not None
@@ -390,46 +393,49 @@ class SessionEngine:
         return self._participants.get(self._config.moderator)
 
     async def _moderator_open(self) -> None:
-        moderator = self._moderator()
-        if moderator is None or moderator.kind != "ai":
-            return
-        ctx = TurnContext(
-            session_id=self._session_id,
-            round=0,
-            turn_instruction="Open the discussion: restate the topic and invite the first contributions.",
+        await self._moderator_speak(
+            round_no=0,
+            instruction="Open the discussion: restate the topic and invite the first contributions.",
+            component="moderator_open",
         )
-        try:
-            message = await moderator.speak(ctx)
-        except Exception as exc:
-            logger.exception("moderator open failed")
-            await self.emit(EventType.ERROR, component="moderator_open", message=str(exc))
-            return
-        if message is not None:
-            await self._post(message.model_copy(update={"kind": "moderator"}))
 
     async def _moderator_close(self) -> None:
-        moderator = self._moderator()
-        if moderator is None or moderator.kind != "ai":
-            return
-        ctx = TurnContext(
-            session_id=self._session_id,
-            round=self._state.current_round,
-            turn_instruction="Close the discussion: summarise the main positions and any remaining disagreements.",
+        await self._moderator_speak(
+            round_no=self._state.current_round,
+            instruction="Close the discussion: summarise the main positions and any remaining disagreements.",
+            component="moderator_close",
         )
+
+    async def _moderator_speak(self, *, round_no: int, instruction: str, component: str) -> None:
+        """Give the floor to the moderator outside the rounds (open / close).
+
+        The moderator is not part of the turn rotation; these are its turns. A
+        human moderator gets a ``TurnAssigned`` so their client shows the prompt
+        (and the usual human timeout applies); an AI moderator just speaks.
+        """
+        moderator = self._moderator()
+        if moderator is None or moderator.kind not in ("ai", "human"):
+            return
+        if moderator.kind == "human":
+            await self.emit(EventType.TURN_ASSIGNED, speaker_id=moderator.id, strategy="moderator")
+        ctx = TurnContext(session_id=self._session_id, round=round_no, turn_instruction=instruction)
         try:
             message = await moderator.speak(ctx)
         except Exception as exc:
-            logger.exception("moderator close failed")
-            await self.emit(EventType.ERROR, component="moderator_close", message=str(exc))
+            logger.exception("%s failed", component)
+            await self.emit(EventType.ERROR, component=component, message=str(exc))
             return
-        if message is not None:
-            await self._post(message.model_copy(update={"kind": "moderator"}))
+        if message is None:
+            if moderator.kind == "human":
+                await self.emit(EventType.TURN_SKIPPED, speaker_id=moderator.id, reason="human_timeout")
+            return
+        await self._post(message.model_copy(update={"kind": "moderator"}))
 
     # -- stop conditions ---------------------------------------------------
     async def _should_stop(self) -> tuple[bool, str]:
         if self._gate.is_stopped:
             return True, self._stop_reason or "manual"
-        ids = self._config.participant_ids()
+        ids = self._config.speaker_ids()
         if ids and all(pid in self._state.disabled for pid in ids):
             return True, "all_disabled"
         cfg = self._config.stop

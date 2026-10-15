@@ -1,6 +1,7 @@
 """Built-in round-robin turn strategy.
 
-Deterministic by default: participants speak in session order, and a round is
+Deterministic by default: participants speak in session order (the
+moderator is not part of the rotation), and a round is
 complete once every *active* participant has spoken. ``shuffle_each_round``
 randomises the order each round using a seeded RNG, so a session and its replay
 agree exactly (the seed is part of the strategy params, stored in the
@@ -44,7 +45,7 @@ class RoundRobin(TurnStrategy):
 
     async def next_speaker(self, state: SessionState) -> str | None:
         if not self._order and state.config is not None:
-            self._set_order(state.config.participant_ids())
+            self._set_order(state.config.speaker_ids())
         if not self._order:
             return None
 
@@ -65,14 +66,16 @@ class RoundRobin(TurnStrategy):
             return None
 
         # After this speaker, everyone active will have spoken -> round is done.
-        if len(self._spoken) + 1 >= len(active):
+        # Count only scheduled speakers: an extra turn (e.g. a moderator's
+        # raised hand) must not end the round early.
+        if len(self._spoken.intersection(active)) + 1 >= len(active):
             state.round_complete = True
         return pick
 
     async def on_event(self, event: Event) -> None:
         if event.type is EventType.SESSION_CREATED:
             cfg = event.payload_as(SessionCreatedPayload)
-            self._set_order(cfg.config.participant_ids())
+            self._set_order(cfg.config.speaker_ids())
         elif event.type is EventType.ROUND_STARTED:
             self._spoken = set()
             p = self.params.model_dump()

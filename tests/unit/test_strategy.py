@@ -10,12 +10,12 @@ from thinktank.domain.models import ParticipantRef, SessionConfig
 from thinktank.strategies.round_robin import RoundRobin
 
 
-def _config(ids: list[str]) -> SessionConfig:
+def _config(ids: list[str], moderator: str | None = None) -> SessionConfig:
     return SessionConfig(
         title="t",
         topic="t",
         participants=[ParticipantRef(agent=p) for p in ids],
-        moderator=ids[0] if ids else None,
+        moderator=moderator,
     )
 
 
@@ -64,3 +64,25 @@ async def test_all_disabled_returns_none() -> None:
     strat = RoundRobin()
     await strat.on_event(_created(["a", "b"]))
     assert await strat.next_speaker(state) is None
+
+
+@pytest.mark.asyncio
+async def test_moderator_is_not_in_the_rotation() -> None:
+    cfg = _config(["mod", "a", "b"], moderator="mod")
+    state = _state(cfg)
+    strat = RoundRobin()
+    await strat.on_event(make_event(EventType.SESSION_CREATED, config=cfg))
+    assert await _drive(strat, state, 2) == ["a", "b"]
+    assert await strat.next_speaker(state) is None
+
+
+@pytest.mark.asyncio
+async def test_extra_turn_does_not_end_the_round_early() -> None:
+    cfg = _config(["mod", "a", "b"], moderator="mod")
+    state = _state(cfg)
+    strat = RoundRobin()
+    await strat.on_event(make_event(EventType.SESSION_CREATED, config=cfg))
+    # The moderator takes the floor out of turn (e.g. a raised hand).
+    await strat.on_event(make_event(EventType.TURN_ASSIGNED, speaker_id="mod", strategy="hand_raise"))
+    assert await strat.next_speaker(state) == "a"
+    assert state.round_complete is False

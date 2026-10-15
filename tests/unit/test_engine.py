@@ -93,3 +93,43 @@ async def test_stop_mid_round_still_closes_the_round(tmp_path: Path) -> None:
     assert len(started) == len(ended)
     assert ended[-1].payload.get("partial") is True
     await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_ai_moderator_only_opens_and_closes(tmp_path: Path) -> None:
+    engine, store, mgr, config, agents = _build(tmp_path)
+    await init_db(engine)
+    sess = await mgr.create_session(config, agents)
+    await mgr.start(sess)
+
+    events = await store.get_events(sess.session_id)
+    assigned = [e.payload.get("speaker_id") for e in events if e.type is EventType.TURN_ASSIGNED]
+    assert "moderator" not in assigned  # never scheduled in a round
+    posted = [e.payload["message"] for e in events if e.type is EventType.MESSAGE_POSTED]
+    mod_msgs = [m for m in posted if m["speaker_id"] == "moderator"]
+    assert len(mod_msgs) == 2  # opening + closing
+    assert all(m["kind"] == "moderator" for m in mod_msgs)
+    assert posted[0]["speaker_id"] == "moderator"
+    assert posted[-1]["speaker_id"] == "moderator"
+    reflected = [e.payload.get("agent_id") for e in events if e.type is EventType.REFLECTION_PROPOSED]
+    assert "moderator" not in reflected
+    await engine.dispose()
+
+
+@pytest.mark.asyncio
+async def test_human_moderator_is_prompted_for_open_and_close(tmp_path: Path) -> None:
+    engine, store, mgr, config, agents = _build(tmp_path)
+    # The human seat moderates; the AI "moderator" template becomes a debater.
+    config = config.model_copy(update={"moderator": "human"})
+    await init_db(engine)
+    sess = await mgr.create_session(config, agents)
+    await mgr.start(sess)
+
+    events = await store.get_events(sess.session_id)
+    human_turns = [
+        e for e in events if e.type is EventType.TURN_ASSIGNED and e.payload.get("speaker_id") == "human"
+    ]
+    assert [e.payload.get("strategy") for e in human_turns] == ["moderator", "moderator"]
+    skipped = [e for e in events if e.type is EventType.TURN_SKIPPED and e.payload.get("speaker_id") == "human"]
+    assert len(skipped) == 2  # timed out in the test, both open and close
+    await engine.dispose()

@@ -251,6 +251,14 @@ class SessionConfig(BaseModel):
     def participant_ids(self) -> list[str]:
         return [p.participant_id for p in self.participants]
 
+    def speaker_ids(self) -> list[str]:
+        """Participants who take turns in the rounds: everyone except the moderator.
+
+        The moderator is not a regular participant. It opens and closes the
+        session (see the engine) but is never scheduled by a turn strategy.
+        """
+        return [pid for pid in self.participant_ids() if pid != self.moderator]
+
 
 # ---------------------------------------------------------------------------
 # Message
